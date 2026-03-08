@@ -1,6 +1,72 @@
 const nodemailer = require('nodemailer');
 const { getAllSettings } = require('./settingsService');
 
+// ─── SMS (noktabilisim.net) ────────────────────────────────────────────────────
+async function sendSmsHttp(phone, message, header) {
+  const s   = await getAllSettings();
+  const url = (s.sms_api_url || process.env.SMS_API_URL || 'http://smsportal.noktabilisim.net:3001') + '/api/external/send-sms';
+  const key = s.sms_api_key || process.env.SMS_API_KEY || '';
+
+  // Numarayı normalize et → sadece rakam, başındaki +90 / 0 kaldır
+  // Servis "5xxxxxxxxx" formatını bekliyor
+  const normalized = phone.replace(/[\s\-\(\)\+]/g, '');
+  const phoneNum   = normalized.startsWith('90') ? normalized.slice(2) : normalized.replace(/^0/, '');
+
+  console.log(`[SMS] Gönderiliyor → ${phoneNum}`);
+
+  const body = { phone: phoneNum, message };
+  if (header) body.header = header;
+
+  const resp = await fetch(url, {
+    method:  'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key':    key,
+    },
+    body:   JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const text = await resp.text().catch(() => '');
+  let result;
+  try { result = JSON.parse(text); } catch { result = { raw: text }; }
+
+  if (!resp.ok) {
+    throw new Error(`SMS API hatası: HTTP ${resp.status} — ${text}`);
+  }
+
+  console.log(`[SMS] Gönderildi ✓`, result);
+  return result;
+}
+
+// ─── WhatsApp (noktabilisim.net) ──────────────────────────────────────────────
+async function sendWhatsAppHttp(phone, message) {
+  const s   = await getAllSettings();
+  const url = s.whatsapp_api_url || process.env.WHATSAPP_API_URL || 'http://whatsapp.noktabilisim.net:3000/send-message';
+
+  const normalized  = phone.replace(/[\s\-\(\)]/g, '');
+  const phoneNumber = normalized.startsWith('+') ? normalized : `+${normalized}`;
+
+  console.log(`[WA] Gönderiliyor → ${phoneNumber}`);
+
+  const resp = await fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ phoneNumber, message }),
+    signal:  AbortSignal.timeout(15000),
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`WhatsApp API hatası: HTTP ${resp.status} — ${body}`);
+  }
+
+  const result = await resp.json().catch(() => ({}));
+  console.log(`[WA] Gönderildi ✓`, result);
+  return result;
+}
+
+// ─── SMTP transporter ─────────────────────────────────────────────────────────
 async function createTransporter() {
   const s = await getAllSettings();
 
@@ -9,22 +75,19 @@ async function createTransporter() {
   const port    = parseInt(s.smtp_port, 10) || (useSSL ? 465 : 587);
 
   console.log('[SMTP] Config:', {
-    host: s.smtp_host,
-    port,
-    secure: useSSL,
+    host: s.smtp_host, port, secure: useSSL,
     auth: useAuth ? { user: s.smtp_user, pass: s.smtp_pass ? '***' : '(boş)' } : 'yok',
-    from: s.smtp_from_email || s.smtp_user
+    from: s.smtp_from_email || s.smtp_user,
   });
 
   return nodemailer.createTransport({
-    host: s.smtp_host,
-    port,
-    secure: useSSL,
+    host: s.smtp_host, port, secure: useSSL,
     auth: useAuth ? { user: s.smtp_user, pass: s.smtp_pass } : undefined,
-    tls: { rejectUnauthorized: false }
+    tls: { rejectUnauthorized: false },
   });
 }
 
+// ─── E-posta HTML şablonu ─────────────────────────────────────────────────────
 function buildHtml(surveyTitle, surveyDescription, link, fromName) {
   return `
     <div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px">
@@ -43,67 +106,66 @@ function buildHtml(surveyTitle, surveyDescription, link, fromName) {
     </div>`;
 }
 
+// ─── Ana gönderim fonksiyonu ──────────────────────────────────────────────────
 exports.send = async (method, user, survey, token) => {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   const link = `${frontendUrl}/survey/${token}`;
   const s    = await getAllSettings();
 
+  // ── E-posta ─────────────────────────────────────────────────────────────────
   if (method === 'email') {
     if (!user.email) throw new Error(`Kullanıcının e-posta adresi yok: ${user.name}`);
-
-    const transporter    = await createTransporter();
-    const fromEmail      = s.smtp_from_email || s.smtp_user;
-    const fromName       = s.smtp_from_name  || 'SurveyPro';
-
+    const transporter = await createTransporter();
+    const fromEmail   = s.smtp_from_email || s.smtp_user;
+    const fromName    = s.smtp_from_name  || 'SurveyPro';
     console.log(`[EMAIL] Gönderiliyor: ${user.email}`);
-
     const info = await transporter.sendMail({
       from:    `"${fromName}" <${fromEmail}>`,
       to:      user.email,
       subject: `Anket: ${survey.title}`,
       html:    buildHtml(survey.title, survey.description, link, fromName),
-      text:    `${survey.title}\n\nAnketi doldurmak için: ${link}`
+      text:    `${survey.title}\n\nAnketi doldurmak için: ${link}`,
     });
-
     console.log(`[EMAIL] Gönderildi ✓ messageId: ${info.messageId}`);
     return info;
-
-  } else if (method === 'sms') {
-    if (!user.phone) throw new Error(`Kullanıcının telefon numarası yok: ${user.name}`);
-    const client = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    return client.messages.create({
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to:   user.phone,
-      body: `${survey.title} anketini doldurmak için: ${link}`
-    });
-
-  } else if (method === 'whatsapp') {
-    if (!user.phone && !user.whatsapp) throw new Error(`Kullanıcının WhatsApp/telefon numarası yok: ${user.name}`);
-    const client = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    return client.messages.create({
-      from: process.env.TWILIO_WHATSAPP_NUMBER,
-      to:   `whatsapp:${user.whatsapp || user.phone}`,
-      body: `*${survey.title}*\n\nAnketi doldurmak için:\n${link}`
-    });
   }
+
+  // ── SMS (noktabilisim.net) ───────────────────────────────────────────────────
+  if (method === 'sms') {
+    if (!user.phone) throw new Error(`Kullanıcının telefon numarası yok: ${user.name}`);
+    const header  = s.sms_header || process.env.SMS_HEADER || 'SURVEYPRO';
+    const message = `${survey.title}\nAnketi doldurmak icin: ${link}`;
+    return sendSmsHttp(user.phone, message, header);
+  }
+
+  // ── WhatsApp (noktabilisim.net) ──────────────────────────────────────────────
+  if (method === 'whatsapp') {
+    const phone = user.whatsapp || user.phone;
+    if (!phone) throw new Error(`Kullanıcının WhatsApp/telefon numarası yok: ${user.name}`);
+    const message =
+      `📋 *${survey.title}*\n` +
+      (survey.description ? `${survey.description}\n\n` : '\n') +
+      `Anketi doldurmak için:\n${link}`;
+    return sendWhatsAppHttp(phone, message);
+  }
+
+  throw new Error(`Bilinmeyen gönderim yöntemi: ${method}`);
 };
 
-// Sadece bağlantı kontrolü
+// ─── SMTP bağlantı testi ──────────────────────────────────────────────────────
 exports.testSmtp = async () => {
   const transporter = await createTransporter();
   await transporter.verify();
   return true;
 };
 
-// Gerçek test e-postası gönderir
+// ─── Test e-postası ───────────────────────────────────────────────────────────
 exports.sendTestEmail = async (to) => {
   const s           = await getAllSettings();
   const transporter = await createTransporter();
   const fromEmail   = s.smtp_from_email || s.smtp_user;
   const fromName    = s.smtp_from_name  || 'SurveyPro';
-
   console.log(`[TEST EMAIL] Gönderiliyor → ${to}`);
-
   const info = await transporter.sendMail({
     from:    `"${fromName}" <${fromEmail}>`,
     to,
@@ -119,9 +181,24 @@ exports.sendTestEmail = async (to) => {
           Gönderen: <strong>${fromEmail}</strong>
         </p>
       </div>`,
-    text: 'SurveyPro SMTP test e-postası. Yapılandırma başarılı.'
+    text: 'SurveyPro SMTP test e-postası. Yapılandırma başarılı.',
   });
-
   console.log(`[TEST EMAIL] Gönderildi ✓ messageId: ${info.messageId}`);
   return info;
+};
+
+// ─── WhatsApp test ────────────────────────────────────────────────────────────
+exports.testWhatsApp = async (phone) => {
+  const link    = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/survey/test-token`;
+  const message = `📋 *SurveyPro Test*\n\nBu bir test mesajıdır. WhatsApp entegrasyonu başarıyla çalışıyor.\nAnket bağlantısı: ${link}`;
+  return sendWhatsAppHttp(phone, message);
+};
+
+// ─── SMS test ─────────────────────────────────────────────────────────────────
+exports.testSms = async (phone) => {
+  const link    = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/survey/test-token`;
+  const message = `SurveyPro Test: SMS entegrasyonu basariyla calisiyor. Anket linki: ${link}`;
+  const s       = await getAllSettings();
+  const header  = s.sms_header || process.env.SMS_HEADER || 'SURVEYPRO';
+  return sendSmsHttp(phone, message, header);
 };
