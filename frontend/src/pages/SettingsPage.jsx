@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSettings, saveSettings, testSmtp } from '../utils/api'
 import { useNotificationStore } from '../store/notificationStore'
-import { Save, Wifi, Eye, EyeOff, Mail, Shield, Server, AtSign, Send, MessageSquare, Phone } from 'lucide-react'
+import { Save, Wifi, Eye, EyeOff, Mail, Shield, Server, AtSign, Send, MessageSquare, Phone, Globe } from 'lucide-react'
 import api from '../utils/api'
 
 const PRESET_SERVERS = [
@@ -53,27 +53,25 @@ export default function SettingsPage() {
   const [showPass,         setShowPass]       = useState(false)
   const [showSmsKey,       setShowSmsKey]     = useState(false)
   const [testResult,       setTestResult]     = useState(null)
-  // Test panelleri
   const [showTestEmail,    setShowTestEmail]  = useState(false)
   const [showTestWa,       setShowTestWa]     = useState(false)
   const [showTestSms,      setShowTestSms]    = useState(false)
-  // Test değerleri
   const [testEmailTo,      setTestEmailTo]    = useState('')
   const [testWaPhone,      setTestWaPhone]    = useState('')
   const [testSmsPhone,     setTestSmsPhone]   = useState('')
-  // Yükleniyor bayrakları
   const [sendingEmail,     setSendingEmail]   = useState(false)
   const [sendingWa,        setSendingWa]      = useState(false)
   const [sendingSms,       setSendingSms]     = useState(false)
 
   const [form, setForm] = useState({
+    site_url: '',
     smtp_host: '', smtp_port: '587', smtp_user: '', smtp_pass: '',
     smtp_ssl: 'false', smtp_auth: 'true',
     smtp_from_name: 'SurveyPro', smtp_from_email: '',
     whatsapp_api_url: 'http://whatsapp.noktabilisim.net:3000/send-message',
     sms_api_url: 'http://smsportal.noktabilisim.net:3001',
     sms_api_key: '',
-    sms_header:  'SURVEYPRO',
+    sms_header:  'NOKTABLSM',
   })
 
   useEffect(() => {
@@ -100,7 +98,6 @@ export default function SettingsPage() {
     finally { setSaving(false) }
   }
 
-  // Önce kaydet, sonra test et — helper
   const saveFirst = async () => { try { await saveSettings(form) } catch {} }
 
   const handleTestConn = async () => {
@@ -149,7 +146,6 @@ export default function SettingsPage() {
     } finally { setSendingSms(false) }
   }
 
-  // Sadece bir test paneli açık kalsın
   const togglePanel = (panel) => {
     setShowTestEmail(panel === 'email' ? !showTestEmail : false)
     setShowTestWa(panel === 'wa' ? !showTestWa : false)
@@ -165,9 +161,33 @@ export default function SettingsPage() {
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-900 mb-1">Sistem Ayarları</h2>
-      <p className="text-sm text-gray-500 mb-8">E-posta, SMS ve WhatsApp bildirim yapılandırması</p>
+      <p className="text-sm text-gray-500 mb-8">Genel, e-posta, SMS ve WhatsApp bildirim yapılandırması</p>
 
       <form onSubmit={handleSave} className="space-y-6">
+
+        {/* ── Genel Ayarlar ────────────────────────────── */}
+        <Section icon={<Globe size={18} />} title="Genel Ayarlar">
+          <div>
+            <label className={labelCls}>Site URL <span className="text-red-400">*</span></label>
+            <input
+              value={form.site_url}
+              onChange={e => set('site_url', e.target.value)}
+              placeholder="http://192.168.2.160"
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              E-posta, SMS ve WhatsApp mesajlarındaki anket bağlantısı bu adres üzerinden oluşturulur.
+              Örnek: <code className="bg-gray-100 px-1 rounded">http://192.168.2.160</code> veya <code className="bg-gray-100 px-1 rounded">https://anket.sirket.com</code>
+            </p>
+          </div>
+          {/* Önizleme */}
+          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100 text-sm">
+            <p className="text-xs font-semibold text-indigo-400 mb-2 uppercase tracking-wide">Örnek Anket Linki</p>
+            <code className="text-indigo-700 break-all">
+              {(form.site_url || 'http://localhost:3000').replace(/\/$/, '')}/survey/abc123-token
+            </code>
+          </div>
+        </Section>
 
         {/* ── SMTP Sunucu ──────────────────────────────── */}
         <Section icon={<Server size={18} />} title="SMTP Sunucu">
@@ -210,7 +230,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* ── Kimlik Bilgileri ─────────────────────────── */}
+        {/* ── SMTP Kimlik ──────────────────────────────── */}
         {isAuth && (
           <Section icon={<AtSign size={18} />} title="SMTP Kimlik Bilgileri">
             <div>
@@ -236,7 +256,7 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {/* ── Gönderici Bilgileri ──────────────────────── */}
+        {/* ── Gönderici ────────────────────────────────── */}
         <Section icon={<Mail size={18} />} title="E-posta Gönderici Bilgileri">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -251,21 +271,6 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-400 mt-1">Boş bırakılırsa kullanıcı adı kullanılır.</p>
             </div>
           </div>
-          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
-            <p className="text-xs font-semibold text-indigo-400 mb-2 uppercase tracking-wide">Önizleme</p>
-            <p className="text-sm text-gray-700">
-              <span className="text-gray-400 w-20 inline-block">Kimden:</span>
-              <span className="font-medium">"{form.smtp_from_name || 'SurveyPro'}"</span>
-              {' '}&lt;{form.smtp_from_email || form.smtp_user || 'ornek@mail.com'}&gt;
-            </p>
-            <p className="text-sm text-gray-700 mt-1">
-              <span className="text-gray-400 w-20 inline-block">Sunucu:</span>
-              {form.smtp_host || '—'}:{form.smtp_port}
-              <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium ${isSsl ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                {isSsl ? '🔒 SSL' : '🔓 STARTTLS'}
-              </span>
-            </p>
-          </div>
         </Section>
 
         {/* ── SMS API ──────────────────────────────────── */}
@@ -279,8 +284,7 @@ export default function SettingsPage() {
             <label className={labelCls}>API Key</label>
             <div className="relative">
               <input value={form.sms_api_key} onChange={e => set('sms_api_key', e.target.value)}
-                type={showSmsKey ? 'text' : 'password'}
-                placeholder="••••••••••••••••••••••••••••••••"
+                type={showSmsKey ? 'text' : 'password'} placeholder="••••••••••••••••"
                 className={inputCls + ' pr-10'} />
               <button type="button" onClick={() => setShowSmsKey(s => !s)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -291,17 +295,8 @@ export default function SettingsPage() {
           <div>
             <label className={labelCls}>SMS Başlığı (Header)</label>
             <input value={form.sms_header} onChange={e => set('sms_header', e.target.value.toUpperCase())}
-              placeholder="SURVEYPRO" maxLength={11} className={inputCls} />
-            <p className="text-xs text-gray-400 mt-1">
-              Operatörde kayıtlı başlık. Maks. 11 karakter, sadece harf/rakam.
-            </p>
-          </div>
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-            <p className="text-xs font-semibold text-blue-500 mb-2 uppercase tracking-wide">Numara Formatı</p>
-            <p className="text-xs text-gray-600">
-              Kullanıcı profilindeki telefon numarası otomatik normalize edilir.<br/>
-              <span className="font-mono bg-white px-1 rounded">+905551234567</span> → <span className="font-mono bg-white px-1 rounded">5551234567</span> (servis formatı)
-            </p>
+              placeholder="NOKTABLSM" maxLength={11} className={inputCls} />
+            <p className="text-xs text-gray-400 mt-1">Operatörde kayıtlı başlık. Boş bırakılırsa gönderilmez.</p>
           </div>
         </Section>
 
@@ -311,9 +306,6 @@ export default function SettingsPage() {
             <label className={labelCls}>API Endpoint URL</label>
             <input value={form.whatsapp_api_url} onChange={e => set('whatsapp_api_url', e.target.value)}
               placeholder="http://whatsapp.noktabilisim.net:3000/send-message" className={inputCls} />
-            <p className="text-xs text-gray-400 mt-1">
-              POST: <code className="bg-gray-100 px-1 rounded">{`{ "phoneNumber": "+905...", "message": "..." }`}</code>
-            </p>
           </div>
         </Section>
 
@@ -329,7 +321,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* ── Test: E-posta ─────────────────────────────── */}
+        {/* ── Test Panelleri ───────────────────────────── */}
         {showTestEmail && (
           <Section icon={<Send size={18} />} title="Test E-postası Gönder">
             <div className="flex gap-3">
@@ -343,10 +335,8 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {/* ── Test: SMS ────────────────────────────────── */}
         {showTestSms && (
           <Section icon={<Phone size={18} />} title="Test SMS Gönder">
-            <p className="text-sm text-gray-500">Ayarları kaydedip gerçek bir SMS göndererek doğrulayın.</p>
             <div className="flex gap-3">
               <input value={testSmsPhone} onChange={e => setTestSmsPhone(e.target.value)}
                 type="tel" placeholder="5551234567 veya +905551234567" className={inputCls} />
@@ -358,7 +348,6 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {/* ── Test: WhatsApp ───────────────────────────── */}
         {showTestWa && (
           <Section icon={<MessageSquare size={18} />} title="Test WhatsApp Mesajı Gönder">
             <div className="flex gap-3">
@@ -376,8 +365,7 @@ export default function SettingsPage() {
         <div className="flex flex-wrap gap-3 justify-end pt-2">
           <button type="button" onClick={handleTestConn} disabled={testing || saving}
             className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-            <Wifi size={16} />
-            {testing ? 'Test ediliyor...' : 'SMTP Test'}
+            <Wifi size={16} /> {testing ? 'Test ediliyor...' : 'SMTP Test'}
           </button>
           <button type="button" onClick={() => togglePanel('email')}
             className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm transition-colors ${showTestEmail ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
@@ -393,8 +381,7 @@ export default function SettingsPage() {
           </button>
           <button type="submit" disabled={saving || testing}
             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium disabled:opacity-50 transition-colors">
-            <Save size={16} />
-            {saving ? 'Kaydediliyor...' : 'Ayarları Kaydet'}
+            <Save size={16} /> {saving ? 'Kaydediliyor...' : 'Ayarları Kaydet'}
           </button>
         </div>
       </form>

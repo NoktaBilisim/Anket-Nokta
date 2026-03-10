@@ -27,15 +27,13 @@ async function start() {
     await sequelize.authenticate();
     logger.info('Database connected');
 
-    // alter:true yerine force:false kullan — mevcut tabloları koru, sadece eksik olanları ekle
-    // Foreign key constraint hatalarını önlemek için alter kapalı
-    await sequelize.sync({ force: false });
+    // alter:true — yeni sütunları (örn. category) otomatik ekler, veri kaybı olmaz
+    await sequelize.sync({ alter: true });
     logger.info('Models synced');
 
-    if (process.env.NODE_ENV === 'development') {
-      const { seedDatabase } = require('./database/seed');
-      await seedDatabase();
-    }
+    // Seed her ortamda çalışır — kullanıcı yoksa admin oluşturur, varsa atlar
+    const { seedDatabase } = require('./database/seed');
+    await seedDatabase();
 
     app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
   } catch (err) {

@@ -32,7 +32,8 @@ const Question = sequelize.define('Question', {
   text: { type: DataTypes.TEXT, allowNull: false },
   required: { type: DataTypes.BOOLEAN, defaultValue: true },
   order: { type: DataTypes.INTEGER, defaultValue: 0 },
-  options: { type: DataTypes.JSONB, defaultValue: [] }
+  options: { type: DataTypes.JSONB, defaultValue: [] },
+  category: { type: DataTypes.STRING(100), allowNull: true, defaultValue: null }
 }, { tableName: 'questions', underscored: true });
 
 const SurveyTarget = sequelize.define('SurveyTarget', {

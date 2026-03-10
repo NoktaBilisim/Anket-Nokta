@@ -32,15 +32,11 @@ exports.update = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return error(res, 'Kullanıcı bulunamadı', 404);
-
     const { name, role, phone, whatsapp, is_active, password } = req.body;
     const updateData = { name, role, phone, whatsapp, is_active };
-
-    // Şifre gönderildiyse hashle ve güncelle
     if (password && password.trim().length > 0) {
       updateData.password = await bcrypt.hash(password, 12);
     }
-
     await user.update(updateData);
     await ActivityLog.create({
       user_id: req.user.id, action: 'user_updated',
@@ -83,4 +79,89 @@ exports.changePassword = async (req, res) => {
     await req.user.update({ password: hash });
     return success(res, { message: 'Şifre güncellendi' });
   } catch (err) { return error(res, err.message); }
+};
+
+// ─── Excel / CSV toplu yükleme ────────────────────────────────────────────────
+exports.importExcel = async (req, res) => {
+  try {
+    if (!req.file) return error(res, 'Dosya yüklenmedi', 400);
+
+    let rows = [];
+
+    // xlsx veya csv parse
+    if (req.file.mimetype === 'text/csv' || req.file.originalname.endsWith('.csv')) {
+      // CSV — basit satır parse
+      const text = req.file.buffer.toString('utf8');
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
+        const obj = {};
+        header.forEach((h, idx) => { obj[h] = cols[idx] || ''; });
+        rows.push(obj);
+      }
+    } else {
+      // XLSX — xlsx paketi
+      const XLSX = require('xlsx');
+      const wb   = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      rows       = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      // Başlıkları küçük harfe normalize et
+      rows = rows.map(r =>
+        Object.fromEntries(Object.entries(r).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()]))
+      );
+    }
+
+    const VALID_ROLES = ['admin', 'creator', 'evaluator', 'participant'];
+    const results = { created: 0, skipped: 0, errors: [] };
+
+    for (const row of rows) {
+      // Sütun adı esnekliği: name/ad, email/eposta, phone/telefon vb.
+      const name     = row['name']     || row['ad']      || row['isim']    || '';
+      const email    = row['email']    || row['eposta']  || row['e-posta'] || '';
+      const phone    = row['phone']    || row['telefon'] || row['gsm']     || '';
+      const whatsapp = row['whatsapp'] || row['wp']      || '';
+      const roleRaw  = row['role']     || row['rol']     || 'participant';
+      const role     = VALID_ROLES.includes(roleRaw.toLowerCase()) ? roleRaw.toLowerCase() : 'participant';
+      const password = row['password'] || row['sifre']   || row['şifre']  || 'Welcome123!';
+
+      if (!name || !email) {
+        results.errors.push(`Satır atlandı: ad veya e-posta boş (${email || '?'})`);
+        results.skipped++;
+        continue;
+      }
+
+      // E-posta format kontrolü
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        results.errors.push(`Geçersiz e-posta: ${email}`);
+        results.skipped++;
+        continue;
+      }
+
+      // Zaten kayıtlı mı?
+      const exists = await User.findOne({ where: { email: email.toLowerCase() } });
+      if (exists) {
+        results.errors.push(`Zaten kayıtlı, atlandı: ${email}`);
+        results.skipped++;
+        continue;
+      }
+
+      const hash = await bcrypt.hash(password, 12);
+      await User.create({
+        name, email: email.toLowerCase(), password: hash,
+        role, phone, whatsapp, is_active: true
+      });
+      results.created++;
+    }
+
+    await ActivityLog.create({
+      user_id: req.user.id, action: 'user_created',
+      metadata: { bulk: true, created: results.created, skipped: results.skipped },
+      ip_address: req.ip
+    });
+
+    return success(res, results);
+  } catch (err) {
+    return error(res, `İçe aktarma hatası: ${err.message}`, 500);
+  }
 };

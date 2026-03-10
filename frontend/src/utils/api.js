@@ -43,6 +43,7 @@ export const updateSurvey = (id, data) => api.put(`/surveys/${id}`, data)
 export const deleteSurvey = (id) => api.delete(`/surveys/${id}`)
 export const sendSurvey = (id, data) => api.post(`/surveys/${id}/send`, data)
 export const getSurveyReport = (id) => api.get(`/surveys/${id}/report`)
+export const exportSurveyExcel = (id) => api.get(`/surveys/${id}/export-excel`, { responseType: 'blob' })
 export const changeSurveyStatus = (id, status) => api.patch(`/surveys/${id}/status`, { status })
 
 // Responses (public)

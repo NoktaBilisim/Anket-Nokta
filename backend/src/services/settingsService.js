@@ -9,6 +9,8 @@ const DEFAULTS = {
   smtp_auth:       process.env.SMTP_AUTH       || 'true',
   smtp_from_name:  process.env.SMTP_FROM_NAME  || 'SurveyPro',
   smtp_from_email: process.env.SMTP_FROM_EMAIL || (process.env.SMTP_USER || ''),
+  // Site URL — mesajlardaki anket linki buradan üretilir
+  site_url: process.env.FRONTEND_URL || 'http://localhost:3000',
   // WhatsApp
   whatsapp_api_url: process.env.WHATSAPP_API_URL || 'http://whatsapp.noktabilisim.net:3000/send-message',
   // SMS

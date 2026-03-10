@@ -19,6 +19,7 @@ exports.get = async (req, res) => {
 exports.save = async (req, res) => {
   try {
     const allowed = [
+      'site_url',
       'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
       'smtp_ssl', 'smtp_auth', 'smtp_from_name', 'smtp_from_email',
       'whatsapp_api_url',
