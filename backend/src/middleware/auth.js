@@ -1,13 +1,14 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const { error } = require('../utils/response');
+const { JWT_SECRET } = require('../utils/jwt');
 
 exports.authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return error(res, 'Token gerekli', 401);
     const token = authHeader.split(' ')[1];
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET);
     const user = await User.findByPk(payload.id);
     if (!user || !user.is_active) return error(res, 'Kullanıcı bulunamadı', 401);
     req.user = user;

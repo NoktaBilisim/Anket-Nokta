@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createSurvey } from '../utils/api'
 import { useNotificationStore } from '../store/notificationStore'
@@ -47,7 +47,7 @@ function ScoreInput({ value, onChange }) {
   )
 }
 
-function QuestionEditor({ question, index, onChange, onRemove, allCategories }) {
+function QuestionEditor({ question, index, onChange, onRemove, allCategories, onDragStart, onDragOver, onDrop, onDragEnd, isDragging }) {
   const update = (field, value) => onChange({ ...question, [field]: value })
 
   const changeType = (newType) => {
@@ -75,10 +75,34 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
   const hasScoring = ['multiple_choice', 'yes_no', 'matrix'].includes(question.type)
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`bg-white border-2 rounded-xl p-5 transition-all ${
+        isDragging
+          ? 'opacity-30 border-indigo-300 scale-[0.99]'
+          : 'border-gray-200 hover:border-gray-300'
+      }`}
+    >
       <div className="flex items-start gap-3">
-        <GripVertical size={20} className="text-gray-300 mt-2 flex-shrink-0" />
+        {/* Sürükleme kolu */}
+        <div
+          className="text-gray-300 hover:text-indigo-400 mt-2 flex-shrink-0 cursor-grab active:cursor-grabbing transition-colors"
+          title="Sırayı değiştirmek için sürükleyin"
+        >
+          <GripVertical size={20} />
+        </div>
+
         <div className="flex-1 space-y-3">
+          {/* Sıra numarası */}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-bold text-indigo-400 bg-indigo-50 rounded-full px-2.5 py-0.5">
+              #{index + 1}
+            </span>
+          </div>
 
           {/* Satır 1: Soru metni + tür + zorunlu */}
           <div className="flex gap-3 flex-wrap items-center">
@@ -132,11 +156,11 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
                     placeholder={`Seçenek ${i + 1}`}
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
                   <ScoreInput value={opt.score} onChange={v => updateOption(i, 'score', v)} />
-                  <button onClick={() => removeOption(i)} className="text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+                  <button type="button" onClick={() => removeOption(i)} className="text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
                 </div>
               ))}
               {question.type === 'multiple_choice' && (
-                <button onClick={addOption} className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                <button type="button" onClick={addOption} className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
                   <Plus size={14} /> Seçenek Ekle
                 </button>
               )}
@@ -180,11 +204,11 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
                     {matrixRows.map((row, i) => (
                       <div key={i} className="flex gap-2">
                         <input value={row} onChange={e => updateRow(i, e.target.value)} placeholder={`Madde ${i + 1}`}
-                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
-                        <button onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
+                        <button type="button" onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
                       </div>
                     ))}
-                    <button onClick={addRow} className="text-xs text-indigo-600 flex items-center gap-1 mt-1"><Plus size={12} /> Satır Ekle</button>
+                    <button type="button" onClick={addRow} className="text-xs text-indigo-600 flex items-center gap-1 mt-1"><Plus size={12} /> Satır Ekle</button>
                   </div>
                 </div>
                 <div>
@@ -195,12 +219,12 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
                     {matrixCols.map((col, i) => (
                       <div key={i} className="flex gap-2 items-center">
                         <input value={col.text} onChange={e => updateCol(i, 'text', e.target.value)} placeholder={`Seçenek ${i + 1}`}
-                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
                         <ScoreInput value={col.score} onChange={v => updateCol(i, 'score', v)} />
-                        <button onClick={() => removeCol(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                        <button type="button" onClick={() => removeCol(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
                       </div>
                     ))}
-                    <button onClick={addCol} className="text-xs text-indigo-600 flex items-center gap-1 mt-1"><Plus size={12} /> Sütun Ekle</button>
+                    <button type="button" onClick={addCol} className="text-xs text-indigo-600 flex items-center gap-1 mt-1"><Plus size={12} /> Sütun Ekle</button>
                   </div>
                 </div>
               </div>
@@ -230,7 +254,7 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
             </div>
           )}
         </div>
-        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 flex-shrink-0 mt-1"><Trash2 size={18} /></button>
+        <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-500 flex-shrink-0 mt-1"><Trash2 size={18} /></button>
       </div>
     </div>
   )
@@ -243,11 +267,42 @@ export default function CreateSurveyPage() {
   const { add }                   = useNotificationStore()
   const navigate                  = useNavigate()
 
+  // Drag & Drop state
+  const dragIndex    = useRef(null)
+  const [dragging, setDragging] = useState(null)
+
   const addQuestion    = ()     => setQuestions(q => [...q, defaultQuestion('multiple_choice')])
   const updateQuestion = (i, q) => setQuestions(qs => qs.map((item, idx) => idx === i ? q : item))
   const removeQuestion = (i)    => setQuestions(qs => qs.filter((_, idx) => idx !== i))
 
-  // Mevcut kategorileri topla (datalist için)
+  const handleDragStart = (i) => {
+    dragIndex.current = i
+    setDragging(i)
+  }
+
+  const handleDragOver = (e, i) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragIndex.current === null || dragIndex.current === i) return
+
+    setQuestions(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex.current, 1)
+      next.splice(i, 0, moved)
+      dragIndex.current = i
+      return next
+    })
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+  }
+
+  const handleDragEnd = () => {
+    dragIndex.current = null
+    setDragging(null)
+  }
+
   const allCategories = [...new Set(questions.map(q => q.category).filter(Boolean))]
 
   const handleSubmit = async (e) => {
@@ -278,7 +333,6 @@ export default function CreateSurveyPage() {
     return sum
   }, 0)
 
-  // Kategori özeti
   const categoryGroups = {}
   questions.forEach(q => {
     const cat = q.category?.trim() || ''
@@ -336,10 +390,19 @@ export default function CreateSurveyPage() {
 
         <div className="space-y-3">
           {questions.map((q, i) => (
-            <QuestionEditor key={i} question={q} index={i}
+            <QuestionEditor
+              key={i}
+              question={q}
+              index={i}
               onChange={updated => updateQuestion(i, updated)}
               onRemove={() => removeQuestion(i)}
-              allCategories={allCategories} />
+              allCategories={allCategories}
+              isDragging={dragging === i}
+              onDragStart={() => handleDragStart(i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+            />
           ))}
           <button type="button" onClick={addQuestion}
             className="w-full border-2 border-dashed border-gray-300 hover:border-indigo-400 rounded-xl py-4 text-gray-500 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2 text-sm">

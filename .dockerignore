@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+.github
+
+# Dependencies
+node_modules
+backend/node_modules
+frontend/node_modules
+
+# Build artifacts
+frontend/dist
+dist
+build
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS and IDE files
+.DS_Store
+*/.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+
+# Documentation and tests
+docs
+*.md
+coverage
+.nyc_output
+
+# Backup dumps
+backups
+*.sql.gz
+*.dump

@@ -1,6 +1,7 @@
 const { ActivityLog, Survey, SurveyTarget, User, Response } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { success, error } = require('../utils/response');
+const logger = require('../utils/logger');
 
 exports.list = async (req, res) => {
   try {
@@ -22,7 +23,10 @@ exports.list = async (req, res) => {
     });
 
     return success(res, { rows: logs.rows, total: logs.count, page: Number(page) });
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Log list error:', err);
+    return error(res, 'İşlem sırasında bir hata oluştu', 500);
+  }
 };
 
 exports.stats = async (req, res) => {
@@ -65,7 +69,10 @@ exports.stats = async (req, res) => {
       dailyResponses,
       recentActivity
     });
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Log stats error:', err);
+    return error(res, 'İşlem sırasında bir hata oluştu', 500);
+  }
 };
 
 exports.mySurveys = async (req, res) => {
@@ -79,5 +86,8 @@ exports.mySurveys = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
     return success(res, targets);
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Log mySurveys error:', err);
+    return error(res, 'İşlem sırasında bir hata oluştu', 500);
+  }
 };

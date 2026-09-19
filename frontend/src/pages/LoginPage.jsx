@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationStore } from '../store/notificationStore'
+import truguardLogo from '../assets/Truguard_logo.png'
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -34,10 +35,19 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-2xl">
+
+          {/* Logo + Başlık */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white">SurveyPro</h1>
-            <p className="text-white/60 mt-2">Anket Yönetim Sistemi</p>
+            <div className="flex justify-center mb-4">
+              <img
+                src={truguardLogo}
+                alt="Truguard Logo"
+                className="h-16 w-auto object-contain drop-shadow-lg"
+              />
+            </div>
+            <p className="text-white/60 mt-2 text-sm">Anket Yönetim Sistemi</p>
           </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="text-white/80 text-sm block mb-1">E-posta</label>
@@ -56,6 +66,7 @@ export default function LoginPage() {
               {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
             </button>
           </form>
+
           <div className="mt-6">
             <p className="text-white/50 text-xs text-center mb-3">Demo Hesaplar</p>
             <div className="grid grid-cols-2 gap-2">

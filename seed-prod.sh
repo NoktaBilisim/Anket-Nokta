@@ -2,7 +2,7 @@
 # Uzak makinede seed çalıştırır
 # Kullanım: bash seed-prod.sh
 
-REMOTE_HOST="192.168.2.160"
+REMOTE_HOST="185.126.217.99"
 REMOTE_USER="root"
 
 echo "Seed çalıştırılıyor..."

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSurvey, updateSurvey } from '../utils/api'
 import { useNotificationStore } from '../store/notificationStore'
-import { Plus, Trash2, GripVertical, Star, Tag } from 'lucide-react'
+import { Plus, Trash2, GripVertical, Star, Tag, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react'
 
 const QUESTION_TYPES = [
   { value: 'multiple_choice', label: 'Çoktan Seçmeli' },
@@ -33,16 +33,21 @@ function normalizeOptions(options, type) {
 function ScoreInput({ value, onChange }) {
   return (
     <div className="flex items-center gap-1 shrink-0">
-      <Star size={12} className="text-yellow-400" />
-      <input type="number" min="0" value={value ?? 0}
+      <Star size={12} className="text-yellow-500" />
+      <input
+        type="number"
+        min="0"
+        value={value ?? 0}
         onChange={e => onChange(Number(e.target.value))}
+        aria-label="Puan Değeri"
         className="w-14 border border-yellow-200 bg-yellow-50 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-yellow-400"
-        title="Bu seçeneğin puanı" />
+        title="Bu seçeneğin puanı"
+      />
     </div>
   )
 }
 
-function QuestionEditor({ question, index, onChange, onRemove, allCategories }) {
+function QuestionEditor({ question, index, onChange, onRemove, allCategories, onDragStart, onDragOver, onDrop, onDragEnd, isDragging }) {
   const update = (field, value) => onChange({ ...question, [field]: value })
 
   const changeType = (newType) => {
@@ -73,21 +78,60 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
   const hasScoring = ['multiple_choice', 'yes_no', 'matrix'].includes(question.type)
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`bg-white border-2 rounded-xl p-5 transition-all ${
+        isDragging
+          ? 'opacity-30 border-indigo-300 scale-[0.99]'
+          : 'border-gray-200 hover:border-gray-300'
+      }`}
+    >
       <div className="flex items-start gap-3">
-        <GripVertical size={20} className="text-gray-300 mt-2 flex-shrink-0" />
+        {/* Sürükleme kolu */}
+        <button
+          type="button"
+          aria-label="Soru Sırasını Değiştir"
+          className="text-gray-300 hover:text-indigo-500 mt-2 shrink-0 cursor-grab active:cursor-grabbing transition-colors focus:outline-none"
+          title="Sırayı değiştirmek için sürükleyin"
+        >
+          <GripVertical size={20} />
+        </button>
+
         <div className="flex-1 space-y-3">
+          {/* Sıra numarası */}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5">
+              #{index + 1}
+            </span>
+          </div>
 
           <div className="flex gap-3 flex-wrap items-center">
-            <input value={question.text} onChange={e => update('text', e.target.value)}
+            <input
+              value={question.text}
+              onChange={e => update('text', e.target.value)}
               placeholder={`Soru ${index + 1}`}
-              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <select value={question.type} onChange={e => changeType(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white">
+              aria-label={`Soru ${index + 1} Başlığı`}
+              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <select
+              value={question.type}
+              onChange={e => changeType(e.target.value)}
+              aria-label="Soru Türü"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white focus:ring-2 focus:ring-indigo-500"
+            >
               {QUESTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            <label className="flex items-center gap-1 text-sm text-gray-500 whitespace-nowrap">
-              <input type="checkbox" checked={question.required} onChange={e => update('required', e.target.checked)} />
+            <label className="flex items-center gap-1 text-sm text-gray-600 whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={question.required}
+                onChange={e => update('required', e.target.checked)}
+                className="rounded text-indigo-600 focus:ring-indigo-500"
+              />
               Zorunlu
             </label>
           </div>
@@ -100,13 +144,14 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
               value={question.category || ''}
               onChange={e => update('category', e.target.value)}
               placeholder="Kategori (opsiyonel, örn: Teknik Bilgi)"
+              aria-label="Soru Kategorisi"
               className="flex-1 border border-indigo-100 bg-indigo-50/40 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-gray-400"
             />
             <datalist id={`cat-list-${index}`}>
               {allCategories.filter(Boolean).map(c => <option key={c} value={c} />)}
             </datalist>
             {question.category && (
-              <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full whitespace-nowrap">
+              <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full whitespace-nowrap font-medium">
                 {question.category}
               </span>
             )}
@@ -114,8 +159,8 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
 
           {hasScoring && (
             <div className="flex items-center gap-2 bg-yellow-50 rounded-lg px-3 py-2 text-xs text-yellow-700 border border-yellow-100">
-              <Star size={13} className="text-yellow-500" />
-              Her seçeneğe puan girebilirsiniz
+              <Star size={13} className="text-yellow-500 shrink-0" />
+              Her seçeneğe puan girebilirsiniz — puanlama raporlara yansır
             </div>
           )}
 
@@ -123,15 +168,30 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
             <div className="space-y-2 pl-1">
               {opts.map((opt, i) => (
                 <div key={i} className="flex gap-2 items-center">
-                  <input value={opt.text} onChange={e => updateOption(i, 'text', e.target.value)}
+                  <input
+                    value={opt.text}
+                    onChange={e => updateOption(i, 'text', e.target.value)}
                     placeholder={`Seçenek ${i + 1}`}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none" />
+                    aria-label={`Seçenek ${i + 1}`}
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
                   <ScoreInput value={opt.score} onChange={v => updateOption(i, 'score', v)} />
-                  <button onClick={() => removeOption(i)} className="text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+                  <button
+                    type="button"
+                    onClick={() => removeOption(i)}
+                    aria-label={`Seçenek ${i + 1} Sil`}
+                    className="text-gray-400 hover:text-red-500 p-1"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               ))}
               {question.type === 'multiple_choice' && (
-                <button onClick={addOption} className="text-sm text-indigo-600 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={addOption}
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+                >
                   <Plus size={14} /> Seçenek Ekle
                 </button>
               )}
@@ -148,7 +208,7 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
                       {matrixCols.map((col, ci) => (
                         <th key={ci} className="px-3 py-2 text-center text-indigo-700 font-medium min-w-[100px]">
                           {col.text || `Sütun ${ci+1}`}
-                          <span className="block text-yellow-500 font-normal">({col.score ?? 0}p)</span>
+                          <span className="block text-yellow-600 font-normal">({col.score ?? 0}p)</span>
                         </th>
                       ))}
                     </tr>
@@ -167,34 +227,68 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
                   </tbody>
                 </table>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Satırlar</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Satırlar (Maddeler)</p>
                   <div className="space-y-1.5">
                     {matrixRows.map((row, i) => (
                       <div key={i} className="flex gap-2">
-                        <input value={row} onChange={e => updateRow(i, e.target.value)} placeholder={`Madde ${i + 1}`}
-                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
-                        <button onClick={() => removeRow(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                        <input
+                          value={row}
+                          onChange={e => updateRow(i, e.target.value)}
+                          placeholder={`Madde ${i + 1}`}
+                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeRow(i)}
+                          aria-label={`Madde ${i + 1} Sil`}
+                          className="text-gray-300 hover:text-red-500 p-1"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     ))}
-                    <button onClick={addRow} className="text-xs text-indigo-600 flex items-center gap-1 mt-1"><Plus size={12} /> Satır Ekle</button>
+                    <button
+                      type="button"
+                      onClick={addRow}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1 mt-1"
+                    >
+                      <Plus size={12} /> Satır Ekle
+                    </button>
                   </div>
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Sütunlar <span className="text-yellow-500">(+ Puan)</span>
+                    Sütunlar <span className="text-yellow-600">(+ Puan)</span>
                   </p>
                   <div className="space-y-1.5">
                     {matrixCols.map((col, i) => (
                       <div key={i} className="flex gap-2 items-center">
-                        <input value={col.text} onChange={e => updateCol(i, 'text', e.target.value)} placeholder={`Seçenek ${i + 1}`}
-                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
+                        <input
+                          value={col.text}
+                          onChange={e => updateCol(i, 'text', e.target.value)}
+                          placeholder={`Seçenek ${i + 1}`}
+                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
                         <ScoreInput value={col.score} onChange={v => updateCol(i, 'score', v)} />
-                        <button onClick={() => removeCol(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                        <button
+                          type="button"
+                          onClick={() => removeCol(i)}
+                          aria-label={`Sütun ${i + 1} Sil`}
+                          className="text-gray-300 hover:text-red-500 p-1"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     ))}
-                    <button onClick={addCol} className="text-xs text-indigo-600 flex items-center gap-1 mt-1"><Plus size={12} /> Sütun Ekle</button>
+                    <button
+                      type="button"
+                      onClick={addCol}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1 mt-1"
+                    >
+                      <Plus size={12} /> Sütun Ekle
+                    </button>
                   </div>
                 </div>
               </div>
@@ -208,7 +302,15 @@ function QuestionEditor({ question, index, onChange, onRemove, allCategories }) 
             </div>
           )}
         </div>
-        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 flex-shrink-0 mt-1"><Trash2 size={18} /></button>
+
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Soru ${index + 1} Sil`}
+          className="text-gray-400 hover:text-red-500 shrink-0 mt-1 p-1"
+        >
+          <Trash2 size={18} />
+        </button>
       </div>
     </div>
   )
@@ -219,20 +321,41 @@ export default function EditSurveyPage() {
   const [form, setForm]           = useState({ title: '', description: '', anonymous: false, expires_at: '' })
   const [questions, setQuestions] = useState([])
   const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState(null)
   const { add }                   = useNotificationStore()
   const navigate                  = useNavigate()
 
-  useEffect(() => {
-    getSurvey(id).then(r => {
-      const s = r.data.data
-      setForm({ title: s.title, description: s.description || '', anonymous: s.anonymous, expires_at: pickDate(s) })
-      setQuestions((s.questions || []).map(q => ({
-        ...q,
-        category: q.category || '',
-        options:  normalizeOptions(q.options, q.type)
-      })))
-    }).finally(() => setLoading(false))
+  // Drag & Drop state
+  const dragIndex    = useRef(null)
+  const [dragging, setDragging] = useState(null)
+
+  const loadSurveyData = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    getSurvey(id)
+      .then(r => {
+        const s = r.data.data
+        setForm({ title: s.title, description: s.description || '', anonymous: s.anonymous, expires_at: pickDate(s) })
+        const sorted = (s.questions || [])
+          .slice()
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map(q => ({
+            ...q,
+            category: q.category || '',
+            options:  normalizeOptions(q.options, q.type)
+          }))
+        setQuestions(sorted)
+      })
+      .catch(err => {
+        setError(err.response?.data?.message || 'Anket yüklenirken bir hata oluştu.')
+      })
+      .finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    loadSurveyData()
+  }, [loadSurveyData])
 
   const allCategories = [...new Set(questions.map(q => q.category).filter(Boolean))]
 
@@ -240,56 +363,212 @@ export default function EditSurveyPage() {
   const updateQ     = (i, q) => setQuestions(qs => qs.map((item, idx) => idx === i ? q : item))
   const removeQ     = (i)    => setQuestions(qs => qs.filter((_, idx) => idx !== i))
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setLoading(true)
-    try {
-      await updateSurvey(id, { ...form, expires_at: form.expires_at?.trim() ? form.expires_at : null, questions })
-      add('Anket güncellendi!')
-      navigate('/surveys')
-    } catch (err) {
-      add(err.response?.data?.message || 'Hata', 'error')
-    } finally { setLoading(false) }
+  // Drag & Drop handlers
+  const handleDragStart = (i) => {
+    dragIndex.current = i
+    setDragging(i)
   }
 
-  if (loading) return <div className="flex items-center justify-center h-full text-gray-500">Yükleniyor...</div>
+  const handleDragOver = (e, i) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragIndex.current === null || dragIndex.current === i) return
 
-  // Kategori özeti
+    setQuestions(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex.current, 1)
+      next.splice(i, 0, moved)
+      dragIndex.current = i
+      return next
+    })
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+  }
+
+  const handleDragEnd = () => {
+    dragIndex.current = null
+    setDragging(null)
+  }
+
+  // Maksimum puan hesaplama (AC-3 uyumu)
+  const totalMaxScore = questions.reduce((sum, q) => {
+    if (q.type === 'rating') return sum + 10
+    if (q.type === 'multiple_choice' || q.type === 'yes_no') {
+      const opts = Array.isArray(q.options) ? q.options : []
+      return sum + Math.max(0, ...opts.map(o => typeof o === 'string' ? 0 : (o.score ?? 0)))
+    }
+    if (q.type === 'matrix') {
+      const cols = q.options?.columns || []
+      const rows = q.options?.rows    || []
+      const maxCol = Math.max(0, ...cols.map(c => typeof c === 'string' ? 0 : (c.score ?? 0)))
+      return sum + maxCol * rows.length
+    }
+    return sum
+  }, 0)
+
+  // Submit
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.title.trim()) return add('Anket başlığı boş bırakılamaz', 'error')
+    setSaving(true)
+    try {
+      await updateSurvey(id, { ...form, expires_at: form.expires_at?.trim() ? form.expires_at : null, questions })
+      add('Anket başarıyla güncellendi!')
+      navigate('/surveys')
+    } catch (err) {
+      add(err.response?.data?.message || 'Güncelleme sırasında hata oluştu', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ── Loading Skeleton ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="p-8 max-w-3xl mx-auto space-y-6 animate-pulse">
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-48 bg-gray-200 rounded-lg" />
+          <div className="h-8 w-24 bg-gray-200 rounded-lg" />
+        </div>
+        <div className="bg-white rounded-xl p-6 border border-gray-200 space-y-4">
+          <div className="h-10 bg-gray-200 rounded-lg" />
+          <div className="h-16 bg-gray-100 rounded-lg" />
+        </div>
+        <div className="bg-white rounded-xl p-6 border border-gray-200 space-y-4">
+          <div className="h-8 bg-gray-200 rounded-lg w-1/3" />
+          <div className="h-12 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+    )
+  }
+
+  // ── Error State ──────────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <div className="p-8 max-w-lg mx-auto text-center">
+        <div className="bg-white rounded-2xl p-8 border border-red-100 shadow-sm">
+          <div className="w-12 h-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={28} />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">Anket Bulunamadı</h3>
+          <p className="text-sm text-gray-500 mb-6">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              type="button"
+              onClick={() => navigate('/surveys')}
+              className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Anket Listesine Dön
+            </button>
+            <button
+              type="button"
+              onClick={loadSurveyData}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1.5"
+            >
+              <RefreshCw size={14} /> Tekrar Dene
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const categoryGroups = {}
   questions.forEach(q => { const c = q.category?.trim(); if (c) { categoryGroups[c] = (categoryGroups[c] || 0) + 1 } })
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h2 className="text-2xl font-bold text-gray-900">Anketi Düzenle</h2>
-        {Object.keys(categoryGroups).length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {Object.entries(categoryGroups).map(([cat, cnt]) => (
-              <span key={cat} className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
-                <Tag size={11} className="inline mr-1" />{cat} ({cnt})
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/surveys')}
+            aria-label="Geri Dön"
+            className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="text-2xl font-bold text-gray-900">Anketi Düzenle</h2>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          {Object.keys(categoryGroups).length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {Object.entries(categoryGroups).map(([cat, cnt]) => (
+                <span key={cat} className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
+                  <Tag size={11} className="inline mr-1" />{cat} ({cnt})
+                </span>
+              ))}
+            </div>
+          )}
+
+          {totalMaxScore > 0 && (
+            <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-3.5 py-1.5">
+              <Star size={15} className="text-yellow-500" />
+              <span className="text-xs font-semibold text-yellow-700">Maks. Puan: {totalMaxScore}</span>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Bilgi notu */}
+      <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5 mb-4 text-sm text-blue-700">
+        <GripVertical size={16} className="text-blue-400 shrink-0" />
+        <span>Soruları yeniden sıralamak için <strong>sürükleyip bırakın</strong>. Sıralama kaydedilir.</span>
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white rounded-xl p-6 border border-gray-200 space-y-4">
-          <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Anket başlığı" required
-            className="w-full border border-gray-200 rounded-lg px-4 py-3 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Açıklama" rows={2}
-            className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none resize-none" />
-          <div className="flex gap-6 flex-wrap">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input type="checkbox" checked={form.anonymous} onChange={e => setForm(f => ({ ...f, anonymous: e.target.checked }))} />
-              Anonim
+        <div className="bg-white rounded-xl p-6 border border-gray-200 space-y-4 shadow-xs">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Anket Başlığı *</label>
+            <input
+              value={form.title}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="Anket başlığı"
+              required
+              className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Açıklama</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Katılımcıların göreceği açıklama metni"
+              rows={2}
+              className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
+          </div>
+
+          <div className="flex gap-6 flex-wrap items-center pt-1 border-t border-gray-100">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.anonymous}
+                onChange={e => setForm(f => ({ ...f, anonymous: e.target.checked }))}
+                className="rounded text-indigo-600 focus:ring-indigo-500"
+              />
+              Anonim Anket
             </label>
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Son Tarih:</label>
-              <input type="datetime-local" value={form.expires_at}
+              <label className="text-xs text-gray-500">Son Tarih:</label>
+              <input
+                type="datetime-local"
+                value={form.expires_at}
                 onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none" />
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
               {form.expires_at && (
-                <button type="button" onClick={() => setForm(f => ({ ...f, expires_at: '' }))}
-                  className="text-xs text-red-400 hover:text-red-600">Temizle</button>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, expires_at: '' }))}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Temizle
+                </button>
               )}
             </div>
           </div>
@@ -297,20 +576,45 @@ export default function EditSurveyPage() {
 
         <div className="space-y-3">
           {questions.map((q, i) => (
-            <QuestionEditor key={i} question={q} index={i}
+            <QuestionEditor
+              key={q.id || `q-${i}`}
+              question={q}
+              index={i}
               onChange={updated => updateQ(i, updated)}
               onRemove={() => removeQ(i)}
-              allCategories={allCategories} />
+              allCategories={allCategories}
+              isDragging={dragging === i}
+              onDragStart={() => handleDragStart(i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+            />
           ))}
-          <button type="button" onClick={addQuestion}
-            className="w-full border-2 border-dashed border-gray-300 hover:border-indigo-400 rounded-xl py-4 text-gray-500 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2 text-sm">
+
+          <button
+            type="button"
+            onClick={addQuestion}
+            className="w-full border-2 border-dashed border-gray-300 hover:border-indigo-400 rounded-xl py-4 text-gray-500 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
             <Plus size={20} /> Soru Ekle
           </button>
         </div>
 
-        <div className="flex gap-3 justify-end">
-          <button type="button" onClick={() => navigate('/surveys')} className="px-6 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">İptal</button>
-          <button type="submit" disabled={loading} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">Kaydet</button>
+        <div className="flex gap-3 justify-end pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/surveys')}
+            className="px-6 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            İptal
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors shadow-xs"
+          >
+            {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+          </button>
         </div>
       </form>
     </div>

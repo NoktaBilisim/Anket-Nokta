@@ -1,25 +1,15 @@
-const { Survey, Question, SurveyTarget, Response, Answer, User, ActivityLog } = require('../models');
+const { Survey, Question, SurveyTarget, Response, Answer, User, ActivityLog, sequelize } = require('../models');
 const notificationService = require('../services/notificationService');
 const { success, error } = require('../utils/response');
-const { Op } = require('sequelize');
-
-exports.list = async (req, res) => {
-  try {
-    const where = {};
-    if (req.user.role === 'creator') where.created_by = req.user.id;
-    if (req.user.role === 'participant' || req.user.role === 'evaluator') {
-      const targets = await SurveyTarget.findAll({ where: { user_id: req.user.id } });
-      where.id = targets.map(t => t.survey_id);
-      where.status = 'active';
-    }
-    const surveys = await Survey.findAll({
-      where,
-      include: [{ model: User, as: 'creator', attributes: ['id', 'name', 'email'] }],
-      order: [['created_at', 'DESC']]
-    });
-    return success(res, surveys);
-  } catch (err) { return error(res, err.message); }
-};
+const { getCache, setCache, invalidateSurveyReportCache } = require('../utils/redis');
+const {
+  validateSurveyCreate,
+  validateSurveyUpdate,
+  validateSurveyStatus,
+  validateSurveySend,
+  isValidUUID
+} = require('../utils/validate');
+const logger = require('../utils/logger');
 
 function parseDate(val) {
   if (!val || val === '' || val === 'Invalid date') return null;
@@ -27,7 +17,6 @@ function parseDate(val) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// ── Seçenek puanını bul ───────────────────────────────────────────────────────
 function findScore(options, selectedValue) {
   if (!Array.isArray(options)) return 0;
   const opt = options.find(o => {
@@ -38,7 +27,6 @@ function findScore(options, selectedValue) {
   return typeof opt === 'string' ? 0 : (opt.score ?? 0);
 }
 
-// ── Soru puanı hesapla ────────────────────────────────────────────────────────
 function calcQuestionScore(q, answerValue) {
   if (answerValue === undefined || answerValue === null) return 0;
   if (q.type === 'rating') return Number(answerValue) || 0;
@@ -58,7 +46,6 @@ function calcQuestionScore(q, answerValue) {
   return 0;
 }
 
-// ── Puan tablosunu oluştur ────────────────────────────────────────────────────
 function buildScoreTable(q, answers) {
   if (q.type === 'multiple_choice' || q.type === 'yes_no') {
     const opts = Array.isArray(q.options) ? q.options : [];
@@ -89,94 +76,285 @@ function buildScoreTable(q, answers) {
   return [];
 }
 
+/**
+ * Excel Formül Enjeksiyonunu Önleyici Temizleme (CSV/Excel Formula Injection Mitigation)
+ */
+function sanitizeExcelCell(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number' || typeof val === 'boolean') return val;
+  const str = String(val);
+  const dangerousPrefixes = ['=', '+', '-', '@', '\t', '\r'];
+  if (dangerousPrefixes.some(prefix => str.startsWith(prefix))) {
+    return `'${str}`;
+  }
+  return str;
+}
+
+/**
+ * Anket raporu ve Excel erişim yetki kontrolü (Admin, Kendi anketini yöneten Creator, Atanmış Evaluator)
+ */
+async function canAccessSurveyReport(user, survey) {
+  if (user.role === 'admin') return true;
+  if (user.role === 'creator' && survey.created_by === user.id) return true;
+  if (user.role === 'evaluator') {
+    const target = await SurveyTarget.findOne({
+      where: { survey_id: survey.id, user_id: user.id }
+    });
+    if (target) return true;
+  }
+  return false;
+}
+
+exports.list = async (req, res) => {
+  try {
+    const where = {};
+    if (req.user.role === 'creator') where.created_by = req.user.id;
+    if (req.user.role === 'participant' || req.user.role === 'evaluator') {
+      const targets = await SurveyTarget.findAll({ where: { user_id: req.user.id } });
+      where.id = targets.map(t => t.survey_id);
+      where.status = 'active';
+    }
+    const surveys = await Survey.findAll({
+      where,
+      include: [{ model: User, as: 'creator', attributes: ['id', 'name', 'email'] }],
+      order: [['created_at', 'DESC']]
+    });
+    return success(res, surveys);
+  } catch (err) {
+    logger.error('Survey list error:', err);
+    return error(res, 'Anketler listelenirken bir hata oluştu');
+  }
+};
+
 exports.create = async (req, res) => {
   try {
+    const { error: valError } = validateSurveyCreate(req.body);
+    if (valError) return error(res, valError, 400);
+
     const { title, description, anonymous, expires_at, questions } = req.body;
-    const survey = await Survey.create({
-      title, description, anonymous,
-      expires_at: parseDate(expires_at),
-      created_by: req.user.id, status: 'draft'
-    });
-    if (questions?.length) {
-      await Question.bulkCreate(questions.map((q, i) => ({
-        ...q,
-        category: q.category || null,
+
+    const full = await sequelize.transaction(async (t) => {
+      const survey = await Survey.create({
+        title: title.trim(),
+        description: description || null,
+        anonymous: !!anonymous,
+        expires_at: parseDate(expires_at),
+        created_by: req.user.id,
+        status: 'draft'
+      }, { transaction: t });
+
+      if (questions?.length) {
+        await Question.bulkCreate(questions.map((q, i) => ({
+          ...q,
+          category: q.category || null,
+          survey_id: survey.id,
+          order: i
+        })), { transaction: t });
+      }
+
+      await ActivityLog.create({
+        user_id: req.user.id,
         survey_id: survey.id,
-        order: i
-      })));
-    }
-    await ActivityLog.create({ user_id: req.user.id, survey_id: survey.id, action: 'survey_created', ip_address: req.ip });
-    const full = await Survey.findByPk(survey.id, { include: [{ model: Question, as: 'questions' }] });
+        action: 'survey_created',
+        ip_address: req.ip
+      }, { transaction: t });
+
+      return await Survey.findOne({
+        where: { id: survey.id },
+        include: [{ model: Question, as: 'questions' }],
+        order: [[{ model: Question, as: 'questions' }, 'order', 'ASC']],
+        transaction: t
+      });
+    });
+
     return success(res, full, 201);
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Survey create error:', err);
+    return error(res, 'Anket oluşturulurken bir hata oluştu');
+  }
 };
 
 exports.get = async (req, res) => {
   try {
-    const survey = await Survey.findByPk(req.params.id, {
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
+    const survey = await Survey.findOne({
+      where: { id: req.params.id },
       include: [
-        { model: Question, as: 'questions', order: [['order', 'ASC']] },
+        { model: Question, as: 'questions' },
         { model: User, as: 'creator', attributes: ['id', 'name', 'email'] }
-      ]
+      ],
+      order: [[{ model: Question, as: 'questions' }, 'order', 'ASC']]
     });
     if (!survey) return error(res, 'Anket bulunamadı', 404);
+
+    // Yetki kontrolü (IDOR Koruması)
+    if (req.user.role === 'admin') {
+      // Admin tüm anketleri görebilir
+    } else if (req.user.role === 'creator') {
+      if (survey.created_by !== req.user.id) {
+        return error(res, 'Bu anketi görüntüleme yetkiniz yok', 403);
+      }
+    } else if (req.user.role === 'evaluator' || req.user.role === 'participant') {
+      if (survey.status !== 'active') {
+        return error(res, 'Bu anketi görüntüleme yetkiniz yok', 403);
+      }
+      const target = await SurveyTarget.findOne({
+        where: { survey_id: survey.id, user_id: req.user.id }
+      });
+      if (!target) {
+        return error(res, 'Bu anketi görüntüleme yetkiniz yok', 403);
+      }
+    } else {
+      return error(res, 'Bu anketi görüntüleme yetkiniz yok', 403);
+    }
+
     return success(res, survey);
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Survey get error:', err);
+    return error(res, 'Anket bilgisi alınırken bir hata oluştu');
+  }
 };
 
 exports.update = async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
+    const { error: valError } = validateSurveyUpdate(req.body);
+    if (valError) return error(res, valError, 400);
+
     const survey = await Survey.findByPk(req.params.id);
     if (!survey) return error(res, 'Anket bulunamadı', 404);
-    if (survey.created_by !== req.user.id && req.user.role !== 'admin')
-      return error(res, 'Yetkisiz', 403);
-    const { title, description, anonymous, expires_at, questions } = req.body;
-    await survey.update({ title, description, anonymous, expires_at: parseDate(expires_at) });
-    if (questions) {
-      await Question.destroy({ where: { survey_id: survey.id } });
-      await Question.bulkCreate(questions.map((q, i) => ({
-        ...q,
-        category: q.category || null,
-        survey_id: survey.id,
-        order: i
-      })));
+    if (survey.created_by !== req.user.id && req.user.role !== 'admin') {
+      return error(res, 'Bu anketi güncelleme yetkiniz yok', 403);
     }
-    await ActivityLog.create({ user_id: req.user.id, survey_id: survey.id, action: 'survey_updated', ip_address: req.ip });
-    const full = await Survey.findByPk(survey.id, { include: [{ model: Question, as: 'questions' }] });
+
+    const { title, description, anonymous, expires_at, questions } = req.body;
+
+    const full = await sequelize.transaction(async (t) => {
+      const updateData = {};
+      if (title !== undefined) updateData.title = title.trim();
+      if (description !== undefined) updateData.description = description;
+      if (anonymous !== undefined) updateData.anonymous = !!anonymous;
+      if (expires_at !== undefined) updateData.expires_at = parseDate(expires_at);
+
+      await survey.update(updateData, { transaction: t });
+
+      if (questions) {
+        await Question.destroy({ where: { survey_id: survey.id }, transaction: t });
+        await Question.bulkCreate(questions.map((q, i) => ({
+          ...q,
+          category: q.category || null,
+          survey_id: survey.id,
+          order: i
+        })), { transaction: t });
+      }
+
+      await ActivityLog.create({
+        user_id: req.user.id,
+        survey_id: survey.id,
+        action: 'survey_updated',
+        ip_address: req.ip
+      }, { transaction: t });
+
+      return await Survey.findOne({
+        where: { id: survey.id },
+        include: [{ model: Question, as: 'questions' }],
+        order: [[{ model: Question, as: 'questions' }, 'order', 'ASC']],
+        transaction: t
+      });
+    });
+
+    // Redis önbelleğini geçersiz kıl
+    await invalidateSurveyReportCache(survey.id);
+
     return success(res, full);
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Survey update error:', err);
+    return error(res, 'Anket güncellenirken bir hata oluştu');
+  }
 };
 
 exports.remove = async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
     const survey = await Survey.findByPk(req.params.id);
     if (!survey) return error(res, 'Anket bulunamadı', 404);
-    if (survey.created_by !== req.user.id && req.user.role !== 'admin')
-      return error(res, 'Yetkisiz', 403);
-    await ActivityLog.create({ user_id: req.user.id, survey_id: survey.id, action: 'survey_deleted', ip_address: req.ip });
+    if (survey.created_by !== req.user.id && req.user.role !== 'admin') {
+      return error(res, 'Bu anketi silme yetkiniz yok', 403);
+    }
+
+    await invalidateSurveyReportCache(survey.id);
+
+    await ActivityLog.create({
+      user_id: req.user.id,
+      survey_id: survey.id,
+      action: 'survey_deleted',
+      ip_address: req.ip
+    });
     await survey.destroy();
+
     return success(res, { message: 'Anket silindi' });
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Survey delete error:', err);
+    return error(res, 'Anket silinirken bir hata oluştu');
+  }
 };
 
 exports.changeStatus = async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
+    const { error: valError } = validateSurveyStatus(req.body.status);
+    if (valError) return error(res, valError, 400);
+
     const survey = await Survey.findByPk(req.params.id);
     if (!survey) return error(res, 'Anket bulunamadı', 404);
+    if (survey.created_by !== req.user.id && req.user.role !== 'admin') {
+      return error(res, 'Bu anketin durumunu değiştirme yetkiniz yok', 403);
+    }
+
     await survey.update({ status: req.body.status });
+    await invalidateSurveyReportCache(survey.id);
+
     return success(res, survey);
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Survey status change error:', err);
+    return error(res, 'Anket durumu güncellenirken bir hata oluştu');
+  }
 };
 
 exports.send = async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
+    const { error: valError } = validateSurveySend(req.body);
+    if (valError) return error(res, valError, 400);
+
     const { userIds, method } = req.body;
-    const survey = await Survey.findByPk(req.params.id, {
-      include: [{ model: Question, as: 'questions' }]
+    const survey = await Survey.findOne({
+      where: { id: req.params.id },
+      include: [{ model: Question, as: 'questions' }],
+      order: [[{ model: Question, as: 'questions' }, 'order', 'ASC']]
     });
     if (!survey) return error(res, 'Anket bulunamadı', 404);
 
     const users = await User.findAll({ where: { id: userIds } });
+    if (users.length === 0) {
+      return error(res, 'Seçilen kullanıcılar bulunamadı', 404);
+    }
+
     const results = { sent: 0, failed: [], targets: [] };
 
     for (const user of users) {
@@ -191,37 +369,62 @@ exports.send = async (req, res) => {
         await notificationService.send(method, user, survey, target.token);
         results.sent++;
       } catch (e) {
-        console.error(`Bildirim hatası [${user.email}]:`, e.message);
+        logger.error(`Bildirim hatası [${user.email}]:`, e);
         results.failed.push({ user: user.email, error: e.message });
       }
     }
 
     if (survey.status === 'draft') await survey.update({ status: 'active' });
     await ActivityLog.create({
-      user_id: req.user.id, survey_id: survey.id, action: 'survey_sent',
+      user_id: req.user.id,
+      survey_id: survey.id,
+      action: 'survey_sent',
       metadata: { method, sent: results.sent, failed: results.failed.length },
       ip_address: req.ip
     });
 
-    if (results.sent === 0 && results.failed.length > 0)
+    await invalidateSurveyReportCache(survey.id);
+
+    if (results.sent === 0 && results.failed.length > 0) {
       return error(res, `Gönderilemedi: ${results.failed[0].error}`, 400);
+    }
 
     return success(res, {
-      sent: results.sent, failed: results.failed,
+      sent: results.sent,
+      failed: results.failed,
       message: results.failed.length > 0
         ? `${results.sent} gönderildi, ${results.failed.length} başarısız`
         : `${results.sent} kişiye başarıyla gönderildi`
     });
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Survey send error:', err);
+    return error(res, 'Anket gönderilirken bir hata oluştu');
+  }
 };
 
-// ── Rapor ─────────────────────────────────────────────────────────────────────
 exports.report = async (req, res) => {
   try {
-    const survey = await Survey.findByPk(req.params.id, {
-      include: [{ model: Question, as: 'questions', order: [['order', 'ASC']] }]
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
+    const survey = await Survey.findOne({
+      where: { id: req.params.id },
+      include: [{ model: Question, as: 'questions' }],
+      order: [[{ model: Question, as: 'questions' }, 'order', 'ASC']]
     });
     if (!survey) return error(res, 'Anket bulunamadı', 404);
+
+    const hasAccess = await canAccessSurveyReport(req.user, survey);
+    if (!hasAccess) {
+      return error(res, 'Bu anketin raporuna erişim yetkiniz yok', 403);
+    }
+
+    const cacheKey = `survey:${req.params.id}:report`;
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return success(res, cached);
+    }
 
     const targets = await SurveyTarget.findAll({
       where: { survey_id: survey.id },
@@ -240,7 +443,6 @@ exports.report = async (req, res) => {
     const completed = targets.filter(t => t.completed_at).length;
     const opened    = targets.filter(t => t.opened_at).length;
 
-    // ── Kişi bazlı puan tablosu ──────────────────────────────────────────────
     const userScores = responses.map(resp => {
       let totalScore = 0;
       const perQuestion = survey.questions.map(q => {
@@ -262,7 +464,6 @@ exports.report = async (req, res) => {
       };
     });
 
-    // ── Soru bazlı istatistikler ─────────────────────────────────────────────
     const questionStats = survey.questions.map(q => {
       const answers = responses.flatMap(r => r.answers.filter(a => a.question_id === q.id));
       const hasScoring = ['multiple_choice', 'yes_no', 'matrix', 'rating'].includes(q.type);
@@ -316,7 +517,6 @@ exports.report = async (req, res) => {
       return { question: q, stats, total: answers.length };
     });
 
-    // ── Kategori bazlı puan özeti ─────────────────────────────────────────────
     const categoryMap = {};
     survey.questions.forEach(q => {
       const cat = q.category || 'Kategorisiz';
@@ -325,15 +525,12 @@ exports.report = async (req, res) => {
       categoryMap[cat].questionCount++;
     });
 
-    // Her kategorinin toplam puanını hesapla
     Object.values(categoryMap).forEach(catInfo => {
-      const catQuestions = survey.questions.filter(q => catInfo.questions.includes(q.id));
       catInfo.totalScoreSum = questionStats
         .filter(qs => catInfo.questions.includes(qs.question.id))
         .reduce((s, qs) => s + (qs.stats.totalScoreSum || 0), 0);
     });
 
-    // Kişi başı kategori puanları
     const userCategoryScores = userScores.map(us => {
       const catScores = {};
       Object.entries(categoryMap).forEach(([cat, info]) => {
@@ -349,10 +546,9 @@ exports.report = async (req, res) => {
       ? (userScores.reduce((s, u) => s + u.totalScore, 0) / userScores.length).toFixed(1)
       : 0;
 
-    // Tüm anket kategorilerini liste olarak döndür
     const categories = [...new Set(survey.questions.map(q => q.category).filter(Boolean))];
 
-    return success(res, {
+    const reportData = {
       survey, sent, opened, completed,
       responseRate: sent ? Math.round((completed / sent) * 100) : 0,
       questionStats,
@@ -361,18 +557,36 @@ exports.report = async (req, res) => {
       categories,
       totalScoreAll,
       avgScore,
-    });
-  } catch (err) { return error(res, err.message); }
+    };
+
+    // Redis önbelleğe kaydet (TTL: 5 dakika = 300 sn)
+    await setCache(cacheKey, reportData, 300);
+
+    return success(res, reportData);
+  } catch (err) {
+    logger.error('Survey report error:', err);
+    return error(res, 'Rapor hesaplanırken bir hata oluştu');
+  }
 };
 
-// ── Excel Export ──────────────────────────────────────────────────────────────
 exports.exportExcel = async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      return error(res, 'Geçersiz anket ID formatı', 400);
+    }
+
     const XLSX = require('xlsx');
-    const survey = await Survey.findByPk(req.params.id, {
-      include: [{ model: Question, as: 'questions', order: [['order', 'ASC']] }]
+    const survey = await Survey.findOne({
+      where: { id: req.params.id },
+      include: [{ model: Question, as: 'questions' }],
+      order: [[{ model: Question, as: 'questions' }, 'order', 'ASC']]
     });
     if (!survey) return error(res, 'Anket bulunamadı', 404);
+
+    const hasAccess = await canAccessSurveyReport(req.user, survey);
+    if (!hasAccess) {
+      return error(res, 'Bu anketin raporuna erişim yetkiniz yok', 403);
+    }
 
     const responses = await Response.findAll({
       where: { survey_id: survey.id, is_complete: true },
@@ -389,7 +603,6 @@ exports.exportExcel = async (req, res) => {
 
     const wb = XLSX.utils.book_new();
 
-    // ── 1. Sayfa: Katılımcı Yanıtları + Puanlar ──────────────────────────────
     const questionHeaders = survey.questions.map((q, i) => `S${i+1}: ${q.text}`);
     const scoreHeaders    = survey.questions.map((q, i) => `S${i+1} Puan`);
 
@@ -417,12 +630,12 @@ exports.exportExcel = async (req, res) => {
         return score;
       });
       const row = {
-        'Ad Soyad':   user.name  || 'Anonim',
-        'E-posta':    user.email || '',
+        'Ad Soyad':   sanitizeExcelCell(user.name || 'Anonim'),
+        'E-posta':    sanitizeExcelCell(user.email || ''),
         'Tamamlanma': resp.updated_at ? new Date(resp.updated_at).toLocaleString('tr-TR') : '',
         'Süre (sn)':  resp.duration_seconds || '',
       };
-      questionHeaders.forEach((h, i) => { row[h] = answerVals[i] });
+      questionHeaders.forEach((h, i) => { row[h] = sanitizeExcelCell(answerVals[i]) });
       scoreHeaders.forEach((h, i)    => { row[h] = scoreVals[i] });
       row['TOPLAM PUAN'] = totalScore;
       return row;
@@ -437,7 +650,6 @@ exports.exportExcel = async (req, res) => {
     ];
     XLSX.utils.book_append_sheet(wb, ws1, 'Yanıtlar');
 
-    // ── 2. Sayfa: Soru Puan Özeti ─────────────────────────────────────────────
     const rows2 = [];
     survey.questions.forEach((q, qi) => {
       const answers = responses.flatMap(r => r.answers.filter(a => a.question_id === q.id));
@@ -453,20 +665,29 @@ exports.exportExcel = async (req, res) => {
             return v.includes(text);
           }).length;
           rows2.push({
-            'Soru No': `S${qi+1}`, 'Kategori': cat, 'Soru': q.text,
+            'Soru No': `S${qi+1}`,
+            'Kategori': sanitizeExcelCell(cat),
+            'Soru': sanitizeExcelCell(q.text),
             'Tür': q.type === 'yes_no' ? 'Evet/Hayır' : 'Çoktan Seçmeli',
-            'Seçenek': text, 'Seçenek Puanı': score,
-            'Seçilme Sayısı': count, 'Toplam Puan': score * count,
+            'Seçenek': sanitizeExcelCell(text),
+            'Seçenek Puanı': score,
+            'Seçilme Sayısı': count,
+            'Toplam Puan': score * count,
           });
         });
       } else if (q.type === 'rating') {
         const vals = answers.map(a => Number(a.value)).filter(Boolean);
         const avg  = vals.length ? (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) : 0;
         rows2.push({
-          'Soru No': `S${qi+1}`, 'Kategori': cat, 'Soru': q.text, 'Tür': 'Puanlama',
-          'Seçenek': '—', 'Seçenek Puanı': '—',
+          'Soru No': `S${qi+1}`,
+          'Kategori': sanitizeExcelCell(cat),
+          'Soru': sanitizeExcelCell(q.text),
+          'Tür': 'Puanlama',
+          'Seçenek': '—',
+          'Seçenek Puanı': '—',
           'Seçilme Sayısı': vals.length,
-          'Toplam Puan': vals.reduce((s, v) => s + v, 0), 'Ortalama': avg,
+          'Toplam Puan': vals.reduce((s, v) => s + v, 0),
+          'Ortalama': avg,
         });
       } else if (q.type === 'matrix') {
         const cols       = q.options?.columns || [];
@@ -480,9 +701,14 @@ exports.exportExcel = async (req, res) => {
               Object.values(a.value).forEach(v => { if (v === colText) count++; });
           });
           rows2.push({
-            'Soru No': `S${qi+1}`, 'Kategori': cat, 'Soru': q.text, 'Tür': 'Matris',
-            'Seçenek': colText, 'Seçenek Puanı': colScore,
-            'Seçilme Sayısı': count, 'Toplam Puan': colScore * count,
+            'Soru No': `S${qi+1}`,
+            'Kategori': sanitizeExcelCell(cat),
+            'Soru': sanitizeExcelCell(q.text),
+            'Tür': 'Matris',
+            'Seçenek': sanitizeExcelCell(colText),
+            'Seçenek Puanı': colScore,
+            'Seçilme Sayısı': count,
+            'Toplam Puan': colScore * count,
             'Satır Sayısı': matrixRows.length,
           });
         });
@@ -493,7 +719,6 @@ exports.exportExcel = async (req, res) => {
     ws2['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 35 }, { wch: 16 }, { wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, ws2, 'Soru Puan Özeti');
 
-    // ── 3. Sayfa: Kişi Puan Sıralaması ───────────────────────────────────────
     const rows3 = responses.map(resp => {
       const user = resp.user || {};
       const total = survey.questions.reduce((sum, q) => {
@@ -501,8 +726,8 @@ exports.exportExcel = async (req, res) => {
         return sum + (ans ? calcQuestionScore(q, ans.value) : 0);
       }, 0);
       return {
-        'Ad Soyad':    user.name  || 'Anonim',
-        'E-posta':     user.email || '',
+        'Ad Soyad':    sanitizeExcelCell(user.name  || 'Anonim'),
+        'E-posta':     sanitizeExcelCell(user.email || ''),
         'Toplam Puan': total,
         'Tamamlanma':  resp.updated_at ? new Date(resp.updated_at).toLocaleString('tr-TR') : '',
         'Süre (sn)':   resp.duration_seconds || '',
@@ -514,18 +739,18 @@ exports.exportExcel = async (req, res) => {
     ws3['!cols'] = [{ wch: 6 }, { wch: 22 }, { wch: 28 }, { wch: 14 }, { wch: 20 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, ws3, 'Puan Sıralaması');
 
-    // ── 4. Sayfa: Kategori Puan Özeti ─────────────────────────────────────────
-    // Kategoriler varsa sayfa oluştur
     const uniqueCats = [...new Set(survey.questions.map(q => q.category || 'Kategorisiz'))];
     const catQMap = {};
     uniqueCats.forEach(cat => {
       catQMap[cat] = survey.questions.filter(q => (q.category || 'Kategorisiz') === cat);
     });
 
-    // Her kişi için kategori puanları
     const rows4 = responses.map(resp => {
       const user = resp.user || {};
-      const row  = { 'Ad Soyad': user.name || 'Anonim', 'E-posta': user.email || '' };
+      const row  = {
+        'Ad Soyad': sanitizeExcelCell(user.name || 'Anonim'),
+        'E-posta': sanitizeExcelCell(user.email || '')
+      };
       let grandTotal = 0;
       uniqueCats.forEach(cat => {
         let catScore = 0;
@@ -550,10 +775,9 @@ exports.exportExcel = async (req, res) => {
     ];
     XLSX.utils.book_append_sheet(wb, ws4, 'Kategori Puanları');
 
-    // ── 5. Sayfa: Gönderim Listesi ────────────────────────────────────────────
     const rows5 = targets.map(t => ({
-      'Ad Soyad':         t.user?.name  || '',
-      'E-posta':          t.user?.email || '',
+      'Ad Soyad':         sanitizeExcelCell(t.user?.name  || ''),
+      'E-posta':          sanitizeExcelCell(t.user?.email || ''),
       'Gönderim Yöntemi': t.send_method || '',
       'Gönderilme':       t.sent_at      ? new Date(t.sent_at).toLocaleString('tr-TR')      : 'Henüz gönderilmedi',
       'Açılma':           t.opened_at    ? new Date(t.opened_at).toLocaleString('tr-TR')    : '—',
@@ -565,12 +789,21 @@ exports.exportExcel = async (req, res) => {
     XLSX.utils.book_append_sheet(wb, ws5, 'Gönderim Listesi');
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    const filename = `${survey.title.replace(/[^a-z0-9ğüşıöçA-ZĞÜŞİÖÇ\s]/gi, '_')}_rapor.xlsx`;
+    const safeTitle = survey.title.replace(/[^a-z0-9ğüşıöçA-ZĞÜŞİÖÇ\s]/gi, '_');
+    const filename = `${safeTitle}_rapor.xlsx`;
 
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buf);
+    return res.send(buf);
   } catch (err) {
-    return error(res, `Excel oluşturulamadı: ${err.message}`, 500);
+    logger.error('Survey excel export error:', err);
+    return error(res, 'Excel raporu oluşturulurken bir hata oluştu');
   }
 };
+
+// Birim testler ve modüler kullanım için dışa aktarma
+exports.calcQuestionScore = calcQuestionScore;
+exports.buildScoreTable = buildScoreTable;
+exports.findScore = findScore;
+exports.parseDate = parseDate;
+exports.sanitizeExcelCell = sanitizeExcelCell;

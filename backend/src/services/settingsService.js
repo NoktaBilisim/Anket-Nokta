@@ -12,11 +12,11 @@ const DEFAULTS = {
   // Site URL — mesajlardaki anket linki buradan üretilir
   site_url: process.env.FRONTEND_URL || 'http://localhost:3000',
   // WhatsApp
-  whatsapp_api_url: process.env.WHATSAPP_API_URL || 'http://whatsapp.noktabilisim.net:3000/send-message',
+  whatsapp_api_url: process.env.WHATSAPP_API_URL || '',
   // SMS
-  sms_api_url:  process.env.SMS_API_URL  || 'http://smsportal.noktabilisim.net:3001',
-  sms_api_key:  process.env.SMS_API_KEY  || '9c0a341a3713db45c5f1786bcee5e270f672d0e42666510d',
-  sms_header:   process.env.SMS_HEADER   || 'NOKTABLSM',
+  sms_api_url:  process.env.SMS_API_URL  || '',
+  sms_api_key:  process.env.SMS_API_KEY  || '',
+  sms_header:   process.env.SMS_HEADER   || '',
 };
 
 async function getAllSettings() {

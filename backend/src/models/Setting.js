@@ -7,6 +7,12 @@ const Setting = sequelize.define('Setting', {
   key: { type: DataTypes.STRING, allowNull: false, unique: true },
   value: { type: DataTypes.TEXT },
   description: { type: DataTypes.STRING }
-}, { tableName: 'settings', underscored: true });
+}, {
+  tableName: 'settings',
+  underscored: true,
+  indexes: [
+    { unique: true, fields: ['key'], name: 'idx_settings_key' }
+  ]
+});
 
 module.exports = Setting;

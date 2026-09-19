@@ -1,6 +1,8 @@
 const { getAllSettings, saveSettings } = require('../services/settingsService');
 const { testSmtp, sendTestEmail, testWhatsApp, testSms } = require('../services/notificationService');
 const { success, error } = require('../utils/response');
+const { isValidEmail } = require('../utils/validate');
+const logger = require('../utils/logger');
 
 const SENSITIVE = ['smtp_pass', 'sms_api_key'];
 
@@ -13,7 +15,10 @@ exports.get = async (req, res) => {
       )
     );
     return success(res, safe);
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Settings get error:', err);
+    return error(res, 'Ayarlar yüklenirken bir hata oluştu');
+  }
 };
 
 exports.save = async (req, res) => {
@@ -34,14 +39,18 @@ exports.save = async (req, res) => {
     }
     await saveSettings(pairs);
     return success(res, { message: 'Ayarlar kaydedildi' });
-  } catch (err) { return error(res, err.message); }
+  } catch (err) {
+    logger.error('Settings save error:', err);
+    return error(res, 'Ayarlar kaydedilirken bir hata oluştu');
+  }
 };
 
 exports.testConnection = async (req, res) => {
   try {
     await testSmtp();
-    return success(res, { message: 'SMTP sunucusuna bağlantı başarılı ✓' });
+    return success(res, { message: 'SMTP sunucusuna bağlantı başarılı' });
   } catch (err) {
+    logger.error('Settings testConnection error:', err);
     return error(res, `SMTP bağlantı hatası: ${err.message}`, 400);
   }
 };
@@ -49,10 +58,13 @@ exports.testConnection = async (req, res) => {
 exports.sendTestEmail = async (req, res) => {
   try {
     const { to } = req.body;
-    if (!to) return error(res, 'Alıcı e-posta adresi gerekli', 400);
+    if (!to || !isValidEmail(to)) {
+      return error(res, 'Geçerli bir alıcı e-posta adresi gereklidir', 400);
+    }
     await sendTestEmail(to);
-    return success(res, { message: `Test e-postası ${to} adresine gönderildi ✓` });
+    return success(res, { message: `Test e-postası ${to} adresine gönderildi` });
   } catch (err) {
+    logger.error('Settings sendTestEmail error:', err);
     return error(res, `E-posta gönderilemedi: ${err.message}`, 400);
   }
 };
@@ -60,10 +72,13 @@ exports.sendTestEmail = async (req, res) => {
 exports.sendTestWhatsApp = async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return error(res, 'Telefon numarası gerekli', 400);
+    if (!phone || typeof phone !== 'string' || !phone.trim()) {
+      return error(res, 'Geçerli bir telefon numarası gereklidir', 400);
+    }
     await testWhatsApp(phone);
-    return success(res, { message: `WhatsApp test mesajı ${phone} numarasına gönderildi ✓` });
+    return success(res, { message: `WhatsApp test mesajı ${phone} numarasına gönderildi` });
   } catch (err) {
+    logger.error('Settings sendTestWhatsApp error:', err);
     return error(res, `WhatsApp gönderilemedi: ${err.message}`, 400);
   }
 };
@@ -71,10 +86,13 @@ exports.sendTestWhatsApp = async (req, res) => {
 exports.sendTestSms = async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return error(res, 'Telefon numarası gerekli', 400);
+    if (!phone || typeof phone !== 'string' || !phone.trim()) {
+      return error(res, 'Geçerli bir telefon numarası gereklidir', 400);
+    }
     await testSms(phone);
-    return success(res, { message: `Test SMS ${phone} numarasına gönderildi ✓` });
+    return success(res, { message: `Test SMS ${phone} numarasına gönderildi` });
   } catch (err) {
+    logger.error('Settings sendTestSms error:', err);
     return error(res, `SMS gönderilemedi: ${err.message}`, 400);
   }
 };

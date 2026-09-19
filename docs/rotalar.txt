@@ -1,0 +1,12 @@
+/login
+/dashboard
+/surveys
+/surveys/create
+/surveys/:id/edit
+/surveys/:id/report
+/my-surveys
+/users
+/logs
+/settings
+/profile
+/survey/:token

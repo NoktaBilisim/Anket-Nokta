@@ -1,19 +1,20 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# SurveyPro — Uzak Makine Kurulum Scripti
-# Hedef: 192.168.2.160  |  Konum: /uygulamalar/anket
+# SurveyPro (Anket) — Publish Sunucusu Kurulum Scripti
+# Hedef: 185.126.217.99 (develop)  |  Konum: /opt/anket
+# Domain: https://anket.noktabilisim.net
 # Kullanım: bash deploy.sh
 # ─────────────────────────────────────────────────────────────
 
 set -e
 
-REMOTE_HOST="192.168.2.160"
-REMOTE_USER="desikimya"           # gerekirse değiştir (ubuntu, admin vb.)
-REMOTE_DIR="/uygulamalar/anket"
+REMOTE_HOST="185.126.217.99"
+REMOTE_USER="root"
+REMOTE_DIR="/opt/anket"
 LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo " SurveyPro → $REMOTE_HOST"
+echo " SurveyPro → $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # 1. Uzak makinede dizin oluştur
@@ -27,6 +28,9 @@ rsync -avz --progress \
   --exclude '.git' \
   --exclude 'frontend/node_modules' \
   --exclude 'backend/node_modules' \
+  --exclude 'frontend/dist' \
+  --exclude '.DS_Store' \
+  --exclude '*/.DS_Store' \
   --exclude '.env' \
   "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/"
 
@@ -54,5 +58,5 @@ ssh "$REMOTE_USER@$REMOTE_HOST" "
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo " ✓ Kurulum tamamlandı!"
-echo " → http://$REMOTE_HOST"
+echo " → https://anket.noktabilisim.net"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
