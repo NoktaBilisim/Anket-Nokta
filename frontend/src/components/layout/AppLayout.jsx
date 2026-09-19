@@ -99,7 +99,7 @@ export default function AppLayout() {
             <img
               src={logoSrc}
               alt={appTitle || 'SurveyPro'}
-              className="h-9 max-h-10 w-auto max-w-[175px] object-contain object-left drop-shadow-xs"
+              className="h-14 max-h-16 w-auto max-w-[220px] object-contain object-left drop-shadow-xs"
               onError={(e) => {
                 e.currentTarget.onerror = null
                 e.currentTarget.src = truguardLogo
