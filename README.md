@@ -123,3 +123,4 @@ npm run build
 3. **Privilege Escalation Koruması:** Herkese açık kayıt endpoint'i (`/api/auth/register`) daima `participant` rolü atar.
 4. **Hassas Bilgi Maskeleme:** Ayarlar ekranında SMTP şifreleri ve SMS API anahtarları `••••••••` olarak maskelenir.
 5. **Anonimlik:** Katılımcı kimliği SHA-256 hash ile şifrelenir ve kullanıcı PII bilgisi anket yanıtından ayrıştırılır.
+# Anket-Nokta
