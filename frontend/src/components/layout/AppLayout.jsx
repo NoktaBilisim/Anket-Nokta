@@ -50,20 +50,16 @@ export default function AppLayout() {
           >
             {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center min-w-0">
             <img
               src={logoSrc}
               alt={appTitle || 'SurveyPro'}
-              className="h-8 max-h-9 w-auto max-w-[110px] object-contain shrink-0 drop-shadow-xs"
+              className="h-8 max-h-9 w-auto max-w-[140px] object-contain object-left shrink-0 drop-shadow-xs"
               onError={(e) => {
                 e.currentTarget.onerror = null
                 e.currentTarget.src = truguardLogo
               }}
             />
-            <div className="min-w-0">
-              <h1 className="text-sm font-bold text-gray-900 truncate leading-none">{appTitle || 'SurveyPro'}</h1>
-              <p className="text-[10px] text-gray-500 capitalize mt-0.5">{user?.role}</p>
-            </div>
           </div>
         </div>
 
@@ -97,22 +93,18 @@ export default function AppLayout() {
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Masaüstü Logo */}
-        <div className="p-5 border-b border-gray-200 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
+        {/* Masaüstü Logo (Tek Sıra) */}
+        <div className="p-4 px-5 border-b border-gray-200 flex items-center justify-between gap-2">
+          <div className="flex items-center min-w-0 flex-1">
             <img
               src={logoSrc}
               alt={appTitle || 'SurveyPro'}
-              className="h-10 max-h-12 w-auto max-w-[130px] object-contain shrink-0 drop-shadow-xs"
+              className="h-9 max-h-10 w-auto max-w-[175px] object-contain object-left drop-shadow-xs"
               onError={(e) => {
                 e.currentTarget.onerror = null
                 e.currentTarget.src = truguardLogo
               }}
             />
-            <div className="min-w-0">
-              <h1 className="text-base font-bold text-gray-900 truncate leading-tight">{appTitle || 'SurveyPro'}</h1>
-              <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-            </div>
           </div>
           {/* Dark mode hızlı toggle */}
           <button
@@ -155,7 +147,12 @@ export default function AppLayout() {
               {user?.name?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
+                <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded capitalize shrink-0">
+                  {user?.role}
+                </span>
+              </div>
               <p className="text-xs text-gray-500 truncate">{user?.email}</p>
             </div>
           </div>
