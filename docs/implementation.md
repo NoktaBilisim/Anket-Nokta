@@ -360,4 +360,190 @@ Time:        2.305 s
 Ran all test suites.
 ```
 
+---
+
+## 8. Backend Kurumsal Marka ve Dinamik Logo Yönetimi (P-02 / AC-23, AC-24, AC-27)
+
+### 8.1 Yapılan Geliştirmeler ve Mimari Kararlar
+
+1. **Herkese Açık Genel Ayarlar Uç Noktası (`GET /api/settings/public` - AC-27):**
+   - Kimlik doğrulama gerektirmeden anonim erişilebilir hale getirildi.
+   - Sadece `{ app_logo, app_title, site_url }` alanları dönecek şekilde izolasyon sağlandı. Hassas ayarlar (SMTP şifresi, SMS API anahtarları vb.) filtrelendi.
+   - `publicSettingsLimiter` ile IP başına dakikada maksimum 60 istek sınırı getirildi.
+   - SLA hedefi (< 100ms) başarıyla sağlandı.
+
+2. **Dinamik Logo Yükleme ve Güvenlik Filtreleri (`POST /api/settings/logo` - AC-23):**
+   - Yalnızca `admin` rolü yetkisine bağlandı (`authenticate` + `authorize('admin')`).
+   - Multer middleware ile `LIMIT_FILE_SIZE: 2MB` sınırı ve MIME kontrolü (`image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`) uygulandı.
+   - `logo_${crypto.randomUUID()}.${ext}` formatında benzersiz dosya isimlendirmesi ile dizin geçişi (path traversal) ve dosya adı çakışmaları engellendi.
+   - **Sunucu Taraflı SVG XSS Sanitizasyonu (`svgSanitizer.js`):** Yüklenen SVG dosyalarındaki `<script>`, `<iframe>`, `<object>`, `<embed>`, `<foreignObject>`, inline `on*` olay dinleyicileri (onload, onclick vb.), `javascript:` ve `data:text/html` şemaları ile `<!DOCTYPE>` / `<!ENTITY>` (XXE) yapıları sunucuda diske yazılmadan önce temizlendi.
+   - Yeni logo yüklendiğinde disktik eski logo dosyası otomatik temizlendi (Garbage Collection).
+   - `activity_logs` tablosuna `setting_updated` eylemi ile audit log kaydı düşüldü.
+
+3. **Logo Sıfırlama ve Varsayılana Dönüş (`DELETE /api/settings/logo` - AC-24):**
+   - Yalnızca `admin` rolü yetkisine bağlandı.
+   - Diskteki özel logo fiziksel olarak silindi, `settings` tablosundaki `app_logo` değeri boşaltıldı (`null` olarak sunuluyor).
+   - `activity_logs` tablosuna işlem kaydı yazıldı.
+
+4. **Statik Dosya Sunumu ve Güvenlik Başlıkları (`app.js`):**
+   - `/uploads` ve `/api/uploads` dizinleri `express.static` ile dışa açıldı.
+   - MIME sniffing saldırılarını önlemek için `X-Content-Type-Options: nosniff` başlığı eklendi.
+   - Helmet üzerinde `crossOriginResourcePolicy: { policy: 'cross-origin' }` yapılandırılarak frontend'in statik varlıklara erişimi güvenceye alındı.
+
+### 8.2 Değişen ve Eklenen Dosyalar
+
+| Dosya | Durum | Açıklama |
+|---|---|---|
+| `/Users/mennan/Projeler/anket/backend/src/utils/svgSanitizer.js` | Eklendi | SVG XSS, XXE ve zararlı etiket/olay temizleyici modül |
+| `/Users/mennan/Projeler/anket/backend/src/middleware/upload.js` | Eklendi | Multer diskStorage, 2MB sınır, MIME filtresi ve SVG sanitization middleware |
+| `/Users/mennan/Projeler/anket/backend/src/middleware/rateLimiter.js` | Güncellendi | `publicSettingsLimiter` (60 req/min) eklendi |
+| `/Users/mennan/Projeler/anket/backend/src/services/settingsService.js` | Güncellendi | `getPublicSettings()`, `deleteLogo()`, `removeLogoFile()` servis fonksiyonları eklendi |
+| `/Users/mennan/Projeler/anket/backend/src/controllers/settingsController.js` | Güncellendi | `getPublic`, `uploadLogo`, `deleteLogo` handler'ları ve audit logging entegrasyonu |
+| `/Users/mennan/Projeler/anket/backend/src/routes/settingsRoutes.js` | Güncellendi | `/public`, `POST /logo`, `DELETE /logo` rotaları tanımlandı |
+| `/Users/mennan/Projeler/anket/backend/src/app.js` | Güncellendi | `/uploads` ve `/api/uploads` statik sunumu ile `nosniff` güvenlik başlığı |
+| `/Users/mennan/Projeler/anket/backend/test/unit/svgSanitizer.test.js` | Eklendi | SVG XSS / XXE koruması için 6 adet birim test |
+| `/Users/mennan/Projeler/anket/backend/test/unit/settings.test.js` | Eklendi | Settings controller & service iş mantığı için 7 adet birim test |
+| `/Users/mennan/Projeler/anket/backend/test/integration/settings.test.js` | Eklendi | AC-23, AC-24, AC-27 uçtan uca API, upload, delete ve SLA entegrasyon testleri (10 test) |
+
+### 8.3 Frontend-Dev Bilgilendirme ve Sözleşme Notları
+
+- **Genel Ayarlar:** `GET /api/settings/public` uç noktası auth header'ı gerektirmez. Dönen veri:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "app_logo": "/uploads/logos/logo_xxxx.png" | null,
+      "app_title": "SurveyPro",
+      "site_url": "http://localhost:3000"
+    }
+  }
+  ```
+- **Logo Görünümü:** `app_logo` `null` veya boş string olduğunda frontend varsayılan Truguard kalkan logosunu göstermelidir. Değer mevcutsa `${API_BASE_URL}${app_logo}` veya doğrudan `/uploads/logos/...` yolu ile `img` taginde kullanılabilir.
+- **Logo Yükleme:** `POST /api/settings/logo` ucu `multipart/form-data` bekler ve dosya alanı adı `logo` olmalıdır. Başarılı yanıtta `{ success: true, data: { app_logo: "...", app_title: "..." } }` döner.
+- **Logo Silme:** `DELETE /api/settings/logo` başarılı olduğunda `{ success: true, data: { app_logo: null } }` döner.
+
+### 8.4 Test Doğrulama Çıktısı
+
+```bash
+cd /Users/mennan/Projeler/anket/backend && npm test
+```
+
+```text
+PASS test/unit/validate.test.js
+PASS test/unit/score.test.js
+PASS test/unit/security.test.js
+PASS test/unit/notification.test.js
+PASS test/unit/redis.test.js
+PASS test/unit/svgSanitizer.test.js
+PASS test/unit/settings.test.js
+PASS test/integration/auth.test.js
+PASS test/integration/survey.test.js
+PASS test/integration/response.test.js
+PASS test/integration/settings.test.js
+
+Test Suites: 11 passed, 11 total
+Tests:       82 passed, 82 total
+Snapshots:   0 total
+Time:        3.421 s
+Ran all test suites.
+```
+
+---
+
+## 9. Frontend Kurumsal Marka ve White-Labeling Uygulama Raporu (P-03, P-04, P-05)
+
+Bu bölümde `frontend-dev` ajanı tarafından tamamlanan dinamik kurumsal marka (White-Labeling), merkezi Zustand durum yönetimi, logo yükleme/doğrulama, canlı önizleme, varsayılana sıfırlama onay modali ve 5 UI durumu geliştirme çalışmaları belgelenmiştir.
+
+### 9.1 Görev Paketleri ve Kabul Kriterleri Karşılığı
+
+| Görev Paketi | Başlık | Durum | Karşılanan AC Maddeleri |
+|---|---|---|---|
+| **P-03** | **Zustand Branding Store & Açılış Entegrasyonu** | TAMAMLANDI | AC-24, AC-25 (`brandingStore.js`, `fetchBranding`, `setBranding`, `resetLogo`, `cacheKey` cache busting) |
+| **P-04** | **Dinamik Logo ve Marka Entegrasyonu (Layout & Login)** | TAMAMLANDI | AC-25, AC-26, AC-27 (`AppLayout.jsx`, `LoginPage.jsx`, `TakeSurveyPage.jsx`, masaüstü sidebar max-h-12, mobil header max-h-9, resilient fallback) |
+| **P-05** | **Sistem Ayarları Logo Yönetimi UI (Upload, Preview, Reset)** | TAMAMLANDI | AC-23, AC-24, AC-27 (Sürükle-bırak Dropzone, 2MB & MIME doğrulama, açık/koyu canlı önizleme, sıfırlama onay modalı, 5 UI durumu) |
+
+---
+
+### 9.2 Frontend Rotaları Tablosu
+
+| Rota Yolu | Auth / Rol | Açıklama | Marka Entegrasyonu |
+|---|---|---|---|
+| `/login` | Public (Giriş gerekmez) | Kullanıcı giriş sayfası | Dinamik logo ve `appTitle`, kırık görselde Truguard fallback |
+| `/survey/:token` | Public (Token ile) | Katılımcı anket yanıtlama arayüzü | Dinamik kurumsal logo ve anket başlığı |
+| `/dashboard` | Protected (`admin`, `creator`, `evaluator`, `participant`) | Ana panel & KPI özetleri | `AppLayout` üzerinden kurumsal logo ve başlık |
+| `/surveys` | Protected (`admin`, `creator`, `evaluator`) | Anket yönetim listesi & filtreleme | `AppLayout` menü ve başlık |
+| `/surveys/create` | Protected (`admin`, `creator`) | Yeni anket ve soru tasarımcısı | `AppLayout` |
+| `/surveys/:id/edit` | Protected (`admin`, `creator`) | Var olan anketi düzenleme | `AppLayout` |
+| `/surveys/:id/report` | Protected (`admin`, `creator`, `evaluator`) | Anket analitik raporu ve Excel dışa aktarım | `AppLayout` |
+| `/my-surveys` | Protected (`participant`) | Katılımcının yanıtlayacağı anketler | `AppLayout` |
+| `/users` | Protected (`admin`) | Kullanıcı listesi, ekleme, rol atama | `AppLayout` |
+| `/logs` | Protected (`admin`) | Sistem aktivite logları & istatistikler | `AppLayout` |
+| `/settings` | Protected (`admin`) | Sistem ayarları & Kurumsal Marka Yönetimi | Logo yükleme/önizleme/sıfırlama, başlık düzenleme, 5 UI durumu |
+| `/profile` | Protected (Tüm Roller) | Profil bilgileri ve şifre güncelleme | `AppLayout` |
+
+---
+
+### 9.3 5 UI Durumu ve Kullanıcı Deneyimi Uygulamaları
+
+1. **Loading Durumu (Skeleton):**
+   - `SettingsPage`: Ayarlar yüklenirken canlı önizleme ve form alanlarında animasyonlu Tailwind skeleton kartları (`animate-pulse`). Logo yüklenirken veya sıfırlanırken butonlar spinner eşliğinde disable edilir.
+2. **Empty Durumu (Varsayılan Görünüm):**
+   - Henüz özel bir kurumsal logo yüklenmemişse sistem varsayılan Truguard logosunu canlı önizlemede ve tüm sayfalarda "Varsayılan Sistem Logosu" etiketiyle zarifçe gösterir.
+3. **Error Durumu (Hata Bildirimi & Tekrar Dene):**
+   - Ayarlar çekilemediğinde hata kartı ve "Tekrar Dene" butonu gösterilir.
+   - İstemci tarafı doğrulama hatalarında (örn: dosya > 2MB veya geçersiz format) anında kırmızı bildirim kartı ve toast mesajı ile kullanıcı uyarılır.
+4. **Validation Durumu (İstemci Doğrulaması - AC-23):**
+   - Dosya seçiminde ve dropzone bırakma anında MIME türü (`image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`) ve dosya boyutu (≤ 2MB) sıkı kontrol edilir; geçersiz dosyalarda ağ isteği yapılmadan engelleyici bildirim verilir.
+5. **Success Durumu (Toast & Canlı Güncelleme):**
+   - Logo yüklendiğinde veya sıfırlandığında yeşil toast bildirimi gösterilir; `useBrandingStore` anında tetiklenerek sol menü, mobil header ve `document.title` yeniden sayfa yüklemesine gerek kalmadan anlık güncellenir (`cacheKey` timestamp ile tarayıcı önbelleği aşılır).
+
+---
+
+### 9.4 Erişilebilirlik ve Güvenilirlik Detayları
+
+- **Kırık Görsel Kurtarma (Resilient Fallback):** Tüm `<img>` etiketlerinde `onError` koruması eklenmiştir (`e.currentTarget.src = truguardLogo`). Logo sunucuda silinse veya bağlantı kopsa dahi arayüz bozulmaz.
+- **Onay Modalı (Destructive Action Confirmation):** "Varsayılan Logoya Dön" işlemi için `role="dialog"`, `aria-modal="true"` ve klavye/focus dostu erişilebilir onay diyaloğu uygulanmıştır.
+- **A11y Standartları:** Bütün butonlarda anlamlı `aria-label`, form kontrollerinde `label`–`input` `htmlFor` eşleştirmesi, mobil dokunma hedeflerinde minimum 44px kuralı uygulanmıştır.
+
+---
+
+### 9.5 Frontend Değiştirilen ve Eklenen Dosyalar Listesi
+
+| Dosya Yolu | İşlem | Açıklama |
+|---|---|---|
+| `/Users/mennan/Projeler/anket/frontend/src/store/brandingStore.js` | Oluşturuldu | White-Labeling Zustand Store (appLogo, appTitle, siteUrl, cacheKey) |
+| `/Users/mennan/Projeler/anket/frontend/src/utils/api.js` | Güncellendi | `getPublicSettings`, `uploadLogo`, `deleteLogo` API fonksiyonları |
+| `/Users/mennan/Projeler/anket/frontend/src/App.jsx` | Güncellendi | Açılışta `fetchBranding` entegrasyonu |
+| `/Users/mennan/Projeler/anket/frontend/src/pages/LoginPage.jsx` | Güncellendi | Dinamik logo ve başlık, Truguard fallback ve kırık görsel koruması |
+| `/Users/mennan/Projeler/anket/frontend/src/components/layout/AppLayout.jsx` | Güncellendi | Masaüstü sidebar (max-h-12) & mobil header (max-h-9) dinamik logo |
+| `/Users/mennan/Projeler/anket/frontend/src/pages/SettingsPage.jsx` | Güncellendi | Logo Dropzone, 2MB/MIME doğrulama, canlı önizleme kartları, onay modalı |
+| `/Users/mennan/Projeler/anket/frontend/src/pages/TakeSurveyPage.jsx` | Güncellendi | Katılımcı anket sayfasında dinamik marka logosu ve başlığı |
+| `/Users/mennan/Projeler/anket/docs/implementation.md` | Güncellendi | Frontend kurumsal marka uygulama notları ve rotalar |
+
+---
+
+### 9.6 Frontend Derleme ve Test Doğrulaması
+
+```bash
+cd /Users/mennan/Projeler/anket/frontend && npm run build
+```
+
+```text
+> surveypro-frontend@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 2294 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                           0.39 kB │ gzip:   0.27 kB
+dist/assets/Truguard_logo-sR1WTb-4.png   20.53 kB
+dist/assets/index-BSZjqyOq.css           38.89 kB │ gzip:   6.90 kB
+dist/assets/index-CwHXtWzO.js           771.60 kB │ gzip: 215.65 kB
+✓ built in 1.32s
+```
+
+
+
 

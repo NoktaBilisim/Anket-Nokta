@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { useBrandingStore } from '../store/brandingStore'
 import { useNotificationStore } from '../store/notificationStore'
 import truguardLogo from '../assets/Truguard_logo.png'
 
@@ -8,6 +9,7 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const { login } = useAuthStore()
+  const { appLogo, appTitle, cacheKey } = useBrandingStore()
   const { add } = useNotificationStore()
   const navigate = useNavigate()
 
@@ -31,6 +33,8 @@ export default function LoginPage() {
     { label: 'Katılımcı', email: 'user1@surveypro.com', password: 'User123!' },
   ]
 
+  const logoSrc = appLogo ? `${appLogo}?v=${cacheKey}` : truguardLogo
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -38,14 +42,19 @@ export default function LoginPage() {
 
           {/* Logo + Başlık */}
           <div className="text-center mb-8">
-            <div className="flex justify-center mb-4">
+            <div className="flex justify-center mb-4 min-h-[64px] items-center">
               <img
-                src={truguardLogo}
-                alt="Truguard Logo"
-                className="h-16 w-auto object-contain drop-shadow-lg"
+                src={logoSrc}
+                alt={appTitle || 'SurveyPro'}
+                className="h-16 w-auto max-w-[240px] object-contain drop-shadow-lg transition-all duration-300"
+                onError={(e) => {
+                  e.currentTarget.onerror = null
+                  e.currentTarget.src = truguardLogo
+                }}
               />
             </div>
-            <p className="text-white/60 mt-2 text-sm">Anket Yönetim Sistemi</p>
+            <h1 className="text-xl font-bold text-white tracking-tight">{appTitle || 'SurveyPro'}</h1>
+            <p className="text-white/60 mt-1 text-sm">Anket ve Değerlendirme Yönetim Sistemi</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

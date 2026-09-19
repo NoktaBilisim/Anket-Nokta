@@ -14,3 +14,5 @@ const createLimiter = (max, windowMs, message) => rateLimit({
 exports.loginLimiter = createLimiter(5, 60 * 1000, 'Çok fazla giriş denemesi. 1 dakika bekleyin.');
 exports.apiLimiter = createLimiter(100, 60 * 1000, 'Çok fazla istek.');
 exports.sendLimiter = createLimiter(30, 60 * 1000, 'Çok fazla gönderim isteği.');
+exports.publicSettingsLimiter = createLimiter(60, 60 * 1000, 'Çok fazla istek. 1 dakika bekleyin.');
+

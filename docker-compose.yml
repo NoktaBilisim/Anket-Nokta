@@ -40,6 +40,8 @@ services:
       DB_HOST: postgres
       REDIS_HOST: redis
       PORT: 5001
+      UPLOAD_DIR: /app/uploads/logos
+      MAX_LOGO_SIZE_MB: 2
     ports:
       - "5001:5001"
     depends_on:
@@ -50,6 +52,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+      - uploads_data:/app/uploads
 
   frontend:
     build:
@@ -74,3 +77,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

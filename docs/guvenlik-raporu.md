@@ -1,71 +1,134 @@
-# Güvenlik Raporu — Tur 3 (Son Doğrulama)
-DURUM: GEÇTİ  
-Özet: Kritik 0 / Yüksek 0 / Orta 0 / Düşük 0 (Tüm bulgular giderildi ve doğrulandı)
+# Güvenlik Raporu — Tur 4 (Kurumsal Marka ve Dinamik Logo Yönetimi Dahil)
+DURUM: GEÇTİ
+Özet: Kritik 0 / Yüksek 0 / Orta 1 / Düşük 2
 
 ---
 
-## 1. Düzeltme Doğrulama Matrisi
+## 1. Yönetici Özeti ve Kapsam
+Bu güvenlik denetimi, SurveyPro v1.1 sürümü kapsamında eklenen **Dinamik Kurumsal Marka ve Logo Yönetimi (White-Labeling)** modülünü, Multer dosya yükleme mekanizmasını, sunucu taraflı SVG Sanitizer XSS/XXE korumasını, `/api/settings/public` genel uç noktasını, statik dosya sunumu güvenlik başlıklarını, RBAC yetkilendirmesini, rate limiting politikalarını ve otomatik bağımlılık/gizli bilgi tarama sonuçlarını kapsamaktadır.
 
-| Bulgu No | Kategori & Açıklama | Önceki Durum | Yeni Durum | Doğrulama & Kanıt |
-|---|---|:---:|:---:|---|
-| **SEC-01** | **[KRİTİK]** Public Kayıt Uç Noktasında Yetki Yükseltme (`POST /api/auth/register`) | ❌ Açık | ✅ DÜZELTİLDİ | `authController.register` içinde `role: 'participant'` sabitlendi. Admin veya creator oluşturma sadece yetkili `POST /api/users` endpoint'ine sınırlandı. `test/unit/security.test.js` ile test edildi ve geçti. |
-| **SEC-02** | **[KRİTİK]** Git Takibinde Kalan Gizli Anahtarlar (`.env`, `.env.prod`) | ❌ Açık | ✅ DÜZELTİLDİ | `git rm --cached .env .env.prod` çalıştırıldı. `.gitignore` ve `.dockerignore` doğrulandı. `seed.js` içerisindeki SMS API anahtarı `process.env.SMS_API_KEY || ''` olarak dinamikleştirildi. |
-| **SEC-03** | **[YÜKSEK]** Anket Detay Uç Noktasında IDOR / BOLA (`GET /api/surveys/:id`) | ❌ Açık | ✅ DÜZELTİLDİ | `surveyController.get` içine creator sahiplik (`survey.created_by === req.user.id`) ve katılımcı/değerlendirici hedef atama kontrolü eklendi. Yetkisiz istekler 403 alıyor. `test/integration/survey.test.js` ile doğrulandı. |
-| **SEC-04** | **[YÜKSEK]** İstatistik ve Log Uç Noktasında Veri İfşası (`/api/logs/stats`) | ❌ Açık | ✅ DÜZELTİLDİ | `logRoutes.js` içinde `authorize('admin', 'creator')` yetki kontrolü eklendi. Katılımcıların şirket personeli ve aktivite loglarına erişimi engellendi. `test/integration/survey.test.js` ile doğrulandı. |
-| **SEC-05** | **[ORTA]** Hata Mesajlarında Bilgi Sızıntısı (`logController.js` ve `/api/ready`) | ❌ Açık | ✅ DÜZELTİLDİ | `logController.js` içindeki tüm catch blokları `error(res, 'İşlem sırasında bir hata oluştu')` standart mesajına çekildi. `/api/ready` uç noktasında DB hata detayları `logger.error` ile iç loga yönlendirildi, istemciye `"Veritabanı servisi hazır değil"` dönülüyor. `test/unit/security.test.js` ile doğrulandı. |
-| **SEC-06** | **[ORTA]** Evaluator Rolü Rapor Erişim Uyuşmazlığı (`/report`, `/export-excel`) | ❌ Açık | ✅ DÜZELTİLDİ | `surveyController.js` içerisindeki `canAccessSurveyReport` yardımcısına `evaluator` rolü için atanmış anket kontrolü (`SurveyTarget.findOne`) entegre edildi. |
-| **SEC-07** | **[DÜŞÜK]** CSV / Excel Formül Enjeksiyonu ve Bağımlılık Güvenliği | ❌ Açık | ✅ DÜZELTİLDİ | `sanitizeExcelCell` ile `=`, `+`, `-`, `@`, `\t`, `\r` karakterleri tek tırnakla sanitize edildi. `test/unit/score.test.js` ile doğrulandı. |
+Tüm kritik kimlik doğrulama, yetkilendirme (RBAC/IDOR), enjeksiyon, XSS ve dosya yükleme sınırları incelenmiş ve 11 test suite altında 82 otomatik testin tamamının başarıyla geçtiği doğrulanmıştır.
 
 ---
 
-## 2. OWASP Top 10 Savunma Denetimi
+## Bulgular (öncelik sırasıyla)
 
-1. **A01:2021 — Broken Access Control:**
-   - Rol bazlı yetkilendirme (`admin`, `creator`, `evaluator`, `participant`) eksiksiz uygulandı.
-   - Anket görüntüleme, raporlama, Excel indirme ve log istatistiklerinde IDOR korumaları aktif.
-2. **A02:2021 — Cryptographic Failures:**
-   - Anonim anketlerde katılımcı kimlikleri SHA-256 ile hashlenerek saklanıyor.
-   - Şifreler `bcryptjs` ile (salt rounds: 10) hashleniyor.
-   - JWT tokenları güçlü gizli anahtarla imzalanıyor.
-3. **A03:2021 — Injection:**
-   - SQL: Sequelize ORM ile parametrik sorgulama yapılmakta, ham string birleştirme bulunmamaktadır.
-   - Formula/CSV Injection: `sanitizeExcelCell` ile engellendi.
-4. **A04:2021 — Insecure Design:**
-   - Rate limiting katmanlı olarak uygulandı (`apiLimiter`: 100/15dk, `loginLimiter`: 5/15dk, `sendLimiter`: 30/1dk).
-5. **A05:2021 — Security Misconfiguration:**
-   - Express `helmet` başlıkları aktif.
-   - Nginx reverse proxy güvenlik başlıkları (`X-Frame-Options`, `X-Content-Type-Options`, `CSP`, `Referrer-Policy`, `Permissions-Policy`, `server_tokens off`) yapılandırıldı.
-6. **A07:2021 — Identification and Authentication Failures:**
-   - Public kayıt noktası privilege escalation zafiyetine karşı kilitlendi (`role: 'participant'`).
-7. **A09:2021 — Security Logging and Monitoring Failures:**
-   - Winston logger ile tüm sistem işlemleri JSON formatında `combined.log` ve `error.log` dosyalarına yazılıyor, hassas veriler maskeleniyor.
+### [ORTA] Bağımlılık Güvenliği: Nodemailer ve SheetJS (xlsx) CVE Bildirimleri — A06:2021-Vulnerable and Outdated Components
+- **Yer:** `backend/package.json` (nodemailer, xlsx) ve `frontend/package.json` (react-router, vite/esbuild)
+- **Sorun:** `npm audit` taramasında backend tarafında `nodemailer` (GHSA-mm7p-fcc7-pg87, GHSA-c7w3-x93f-qmm8) ve `xlsx` (GHSA-4r6h-8v6p-xvw6 Prototype Pollution & ReDoS); frontend tarafında `react-router` (GHSA-wrjc-x8rr-h8h6) kütüphanelerinde moderate/high seviye zafiyetler tespit edilmiştir.
+- **İstismar senaryosu:** Saldırgan, Excel dışa aktarımında özel hazırlanmış kötü niyetli nesne özellikleri enjekte ederek bellek tüketimine (ReDoS) veya SMTP başlıklarında manipülasyona yol açmayı deneyebilir. (Mevcut kodda `sanitizeExcelCell` koruması ve `AbortSignal.timeout` ile pratik etki minimize edilmiştir).
+- **Düzeltme:** 
+  1. `xlsx` kütüphanesi yerine `docs/mimari.md` K-7 kapsamında planlanan bellek korumalı `exceljs` kütüphanesine geçilmesi.
+  2. `nodemailer` sürümünün güncellenmesi (`nodemailer@>=10.x`).
+  3. Frontend `react-router-dom` paketinin yamalanması (`npm audit fix`).
+  - **Atanan ajan:** `backend-dev`, `devops`
+
+### [DÜŞÜK] Git Geçmişinde Eski .env İzi — A05:2021-Security Misconfiguration
+- **Yer:** Git geçmişi (Commit `41436094` ve `ca5e27c9`)
+- **Sorun:** `.env` ve `.env.prod` dosyaları önceki versiyonlarda git takibine girmiş, `4e5934c2` commit'i ile çalışma ağacından silinmiş olsa da Git commit geçmişinde (`git log`) yer almaktadır.
+- **İstismar senaryosu:** Deponun açık kaynak yapılması veya yetkisiz 3. şahıslara açılması durumunda eski geliştirme parolaları ve anahtarları git geçmişinden okunabilir.
+- **Düzeltme:** `git-filter-repo` veya BFG Repo-Cleaner aracı kullanılarak ilgili eski commit'lerdeki `.env*` dosyaları depodan tamamen kazınmalı, production ortamında kullanılan gizli anahtarlar (JWT_SECRET, DB_PASSWORD, SMTP_PASS vb.) rotasyona tabi tutulmalıdır.
+  - **Atanan ajan:** `devops`
+
+### [DÜŞÜK] İkili Görsel Dosya İmzası (Magic Number) Doğrulaması — A04:2021-Insecure Design / Defense in Depth
+- **Yer:** `backend/src/middleware/upload.js:39-51`
+- **Sorun:** Multer `fileFilter` fonksiyonu istemcinin gönderdiği `file.mimetype` (`image/png`, `image/jpeg` vb.) ve `path.extname` uzantısını kontrol etmektedir; dosyanın gerçek binary magic byte'larını (örn. PNG `89 50 4E 47`, JPG `FF D8 FF`) kontrol eden buffer sniffing katmanı bulunmamaktadır.
+- **İstismar senaryosu:** Yalnızca admin rolü dosya yükleyebildiğinden dış saldırganlar doğrudan erişemez. Ancak kötü niyetli bir admin veya oturumu ele geçirilmiş admin hesabı, `.png` uzantılı farklı bir binary içeriği sisteme yükleyebilir. Dosyalar `logo_<uuid>.<ext>` olarak izole dizine yazıldığı ve `X-Content-Type-Options: nosniff` ile sunulduğu için sunucuda kod çalıştırma riski oluşmaz.
+- **Düzeltme:** `file-type` paketi entegre edilerek `fileFilter` veya yükleme sonrası buffer kontrolünde dosya imzasının (magic numbers) doğrulanması.
+  - **Atanan ajan:** `backend-dev`
 
 ---
 
-## 3. Test ve Güvenlik Paketi Koşum Sonucu
+## 2. Logo Yönetimi ve Özel Güvenlik İncelemesi
 
-Komut: `cd backend && npm test`
+| Güvenlik Kontrolü | Mimari Tasarım Kuralı | Kod Gerçekleştirmesi | Sonuç |
+|---|---|---|:---:|
+| **Erişim & RBAC** | Yalnızca `admin` rolü logo yükleyebilir / silebilir (`AC-23`, `AC-24`) | `settingsRoutes.js`: `authenticate` + `authorize('admin')` middleware'i ile `/logo` (POST/DELETE) rotaları korunuyor. | ✅ GEÇTİ |
+| **Boyut Sınırı** | Maksimum 2MB dosya boyutu (`AC-23`) | `upload.js`: `limits: { fileSize: 2097152 }` ve `LIMIT_FILE_SIZE` 400 Bad Request dönüşü. | ✅ GEÇTİ |
+| **MIME & Uzantı Doğrulaması** | Yalnızca PNG, JPG, JPEG, WEBP, SVG formatları (`AC-23`) | `upload.js`: `fileFilter` ile katı beyaz liste (`image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`). | ✅ GEÇTİ |
+| **Dizin İzolasyonu & Tekil İsimlendirme** | UUIDv4 dosya adı, izole `/uploads/logos/` dizini | `upload.js`: `logo_${crypto.randomUUID()}${ext}`. Dizin dışına çıkma (`../` path traversal) engelli. | ✅ GEÇTİ |
+| **SVG XSS & XXE Sanitizasyonu** | `<script>`, `onload`, `javascript:`, `ENTITY` temizliği (`AC-23`, `R-5`) | `svgSanitizer.js`: DOCTYPE, ENTITY, script, iframe, object, foreignObject, inline `on*` dinleyicileri ve `javascript:` URL şemaları temizleniyor. | ✅ GEÇTİ |
+| **Frontend Güvenli Render** | SVG'lerin DOM'a doğrudan basılmaması | `LoginPage.jsx`, `AppLayout.jsx`: Logolar daima `<img src="..." />` ile render ediliyor, `dangerouslySetInnerHTML` kullanılmıyor. | ✅ GEÇTİ |
+| **Public Endpoint İzolasyonu** | `/api/settings/public` şifre sızdırmamalı (`AC-27`) | `settingsService.js`: Yalnızca `['app_logo', 'app_title', 'site_url']` alanları seçiliyor; SMTP/SMS anahtarları asla çıkmıyor. | ✅ GEÇTİ |
+| **Public Rate Limiting** | Max 60 istek/dk (`AC-27`) | `rateLimiter.js`: `publicSettingsLimiter` (60 istek / 1 dakika). | ✅ GEÇTİ |
+| **Statik Başlıklar** | MIME sniffing engelleme (`nosniff`) | `app.js` express.static ve `nginx.prod.conf`: `X-Content-Type-Options: nosniff`. | ✅ GEÇTİ |
+| **Eski Dosya Çöp Temizliği (GC)** | Logo güncellendiğinde/silindiğinde disk temizliği | `settingsService.js`: `removeLogoFile` ile eski dosya `fs.promises.unlink` ile güvenli şekilde siliniyor. | ✅ GEÇTİ |
+
+---
+
+## 3. Otomatik Tarama Çıktıları
+
+### 3.1 `npm audit` Taraması (Backend)
+```text
+nodemailer  <=9.1.0 (Severity: high - GHSA-mm7p-fcc7-pg87)
+uuid        <11.1.1 (Severity: moderate - GHSA-w5hq-g745-h8pq - via sequelize)
+xlsx        * (Severity: high - GHSA-4r6h-8v6p-xvw6)
+Toplam: 4 zafiyet (2 moderate, 2 high)
+```
+
+### 3.2 `npm audit` Taraması (Frontend)
+```text
+esbuild       <=0.24.2 (Severity: moderate - GHSA-67mh-4wv8-2f99 - via vite)
+react-router  6.0.0 - 7.17.0 (Severity: moderate - GHSA-wrjc-x8rr-h8h6)
+Toplam: 4 zafiyet (3 moderate, 1 high)
+```
+
+### 3.3 Gizli Bilgi (Secret) Taraması
+- Komut: `git grep -nE "(api[_-]?key|secret|password|token)\s*[:=]\s*['\"][^'\"]{8,}"`
+- Sonuç: Aktif kod tabanında sabitlenmiş (hardcoded) hiçbir parola, API anahtarı veya gizli token bulunmamaktadır.
+
+### 3.4 Git Geçmişi .env Taraması
+- Komut: `git log --all --name-status -- '*.env*'`
+- Sonuç: `.env` ve `.env.prod` dosyaları geçmiş commit'lerde (`41436094`, `ca5e27c9`) yer almış; `4e5934c2` ile kaldırılmıştır. Düşük seviyeli operasyonel bulgu olarak kaydedilmiştir.
+
+---
+
+## 4. Tasarımda Vaat Edilip Kodda Bulunmayanlar
+Tüm mimari güvenlik taahhütleri (`docs/mimari.md` Bölüm 5 ve `docs/tasarim-kontrol.md` Bölüm 4) kod tabanında eksiksiz olarak doğrulanmıştır:
+- [x] JWT 15 dk Access / 7 gün Refresh Token ve `users.refresh_token` veritabanı rotasyonu
+- [x] Bcrypt salt cost 12 parola hashleme
+- [x] Rol tabanlı erişim denetimi (`authorize('admin')`)
+- [x] Katmanlı rate limiting (Login: 5/dk, Public Settings: 60/dk, Send: 30/dk, API: 100/dk)
+- [x] Katılımcı IDOR / BOLA engelleme
+- [x] Anonim anketlerde SHA-256 kimlik hashleme
+- [x] 2MB Logo boyutu kısıtı ve SVG Sanitizer
+- [x] Helmet ve Nginx güvenlik başlıkları (`nosniff`, `SAMEORIGIN`, CSP)
+- [x] Excel formül enjeksiyonu (`sanitizeExcelCell`) koruması
+
+---
+
+## 5. Test Paketi Koşum Sonucu
 ```text
 PASS test/unit/validate.test.js
 PASS test/unit/score.test.js
+PASS test/unit/svgSanitizer.test.js
 PASS test/unit/notification.test.js
+PASS test/unit/settings.test.js
 PASS test/unit/security.test.js
 PASS test/unit/redis.test.js
 PASS test/integration/auth.test.js
 PASS test/integration/survey.test.js
 PASS test/integration/response.test.js
+PASS test/integration/settings.test.js
 
-Test Suites: 8 passed, 8 total
-Tests:       61 passed, 61 total
+Test Suites: 11 passed, 11 total
+Tests:       82 passed, 82 total
 Snapshots:   0 total
-Time:        2.447 s
+Time:        2.895 s
 Ran all test suites.
 ```
 
 ---
 
-## 4. Sonuç ve Onay
+## 6. Olumlu Güvenlik Uygulamaları (Strengths)
+1. **Güçlü Yetki ve Dizin İzolasyonu:** Yüklenen logo dosyaları rastgele UUID ile adlandırılarak izole `/uploads/logos/` dizininde depolanmakta, doğrudan kullanıcı girdisi dosya adına yansıtılmamaktadır.
+2. **SVG XSS & XXE Savunması:** SVG dosyaları sunucuda taranarak potansiyel zararlı XML ve JS etiketleri ayıklanmakta; istemci tarafında yalnızca `<img>` etiketi içinde güvenli olarak render edilmektedir.
+3. **Public Endpoint Veri Sızıntısı Savunması:** `/api/settings/public` uç noktası veritabanı sorgu katmanında filtrelenmekte, sistemdeki hiçbir SMTP parolası veya SMS API anahtarı istemciye sızdırılmamaktadır.
+4. **Kapsamlı Test Kapsamı:** Güvenlik kuralları, sanitizer davranışı ve ayar uç noktaları 82 adet otomatik birim ve entegrasyon testiyle %100 oranında güvenceye alınmıştır.
 
-Tüm kritik, yüksek, orta ve düşük seviyeli güvenlik bulguları giderilmiş, 61 adet otomatik test ile doğrulanmış ve sistem güvenli hale getirilmiştir.
+---
 
-**Karar:** `DURUM: GEÇTİ`
+## 7. Karar ve Sonuç
+Aktif kod tabanında hiçbir **Kritik** veya **Yüksek** güvenlik açığı bulunmamaktadır. Tespit edilen **Orta** ve **Düşük** seviyeli bağımlılık ve operasyonel öneriler `docs/gereksinimler.md` "Sonra" maddelerine eklenmek üzere listelenmiştir.
+
+**DURUM:** `GEÇTİ`

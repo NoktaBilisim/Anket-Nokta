@@ -12,11 +12,39 @@ const {
 } = require('../models');
 const logger = require('../utils/logger');
 
+const DEFAULT_SETTINGS = [
+  { key: 'app_logo', value: process.env.APP_LOGO || '', description: 'Özel kurumsal logo dosya yolu' },
+  { key: 'app_title', value: process.env.APP_TITLE || 'SurveyPro', description: 'Uygulama ve sistem başlığı' },
+  { key: 'site_url', value: process.env.FRONTEND_URL || 'http://localhost:3000', description: 'Uygulama genel web adresi' },
+  { key: 'smtp_host', value: process.env.SMTP_HOST || 'smtp.gmail.com', description: 'SMTP sunucu adresi' },
+  { key: 'smtp_port', value: process.env.SMTP_PORT || '587', description: 'SMTP port numarası' },
+  { key: 'smtp_user', value: process.env.SMTP_USER || '', description: 'SMTP kullanıcı adı / e-posta' },
+  { key: 'smtp_pass', value: process.env.SMTP_PASS || '', description: 'SMTP parolası' },
+  { key: 'smtp_ssl', value: 'false', description: 'SMTP SSL / TLS kullanımı' },
+  { key: 'smtp_auth', value: 'true', description: 'SMTP kimlik doğrulama' },
+  { key: 'smtp_from_name', value: 'SurveyPro Kurumsal', description: 'E-posta gönderici başlığı' },
+  { key: 'smtp_from_email', value: 'noreply@surveypro.com', description: 'E-posta gönderici adresi' },
+  { key: 'sms_api_url', value: process.env.SMS_API_URL || 'http://smsportal.noktabilisim.net:3001', description: 'Nokta Bilişim SMS Gateway API' },
+  { key: 'sms_api_key', value: process.env.SMS_API_KEY || '', description: 'SMS Gateway API Anahtarı' },
+  { key: 'sms_header', value: process.env.SMS_HEADER || 'NOKTABLSM', description: 'SMS Başlık (Originator)' },
+  { key: 'whatsapp_api_url', value: process.env.WHATSAPP_API_URL || 'http://whatsapp.noktabilisim.net:3000/send-message', description: 'Nokta Bilişim WhatsApp API' }
+];
+
+async function seedDefaultSettings() {
+  for (const setting of DEFAULT_SETTINGS) {
+    await Setting.findOrCreate({
+      where: { key: setting.key },
+      defaults: setting
+    });
+  }
+}
+
 async function seedDatabase() {
   try {
     const userCount = await User.count();
     if (userCount > 0) {
-      logger.info('Database already contains data, skipping seed.');
+      await seedDefaultSettings();
+      logger.info('Database already contains data, synced default settings and skipping demo seed.');
       return;
     }
 
@@ -87,29 +115,8 @@ async function seedDatabase() {
       is_active: true
     });
 
-    // 2. Sistem Ayarları
-    const defaultSettings = [
-      { key: 'site_url', value: process.env.FRONTEND_URL || 'http://localhost:3000', description: 'Uygulama genel web adresi' },
-      { key: 'smtp_host', value: process.env.SMTP_HOST || 'smtp.gmail.com', description: 'SMTP sunucu adresi' },
-      { key: 'smtp_port', value: process.env.SMTP_PORT || '587', description: 'SMTP port numarası' },
-      { key: 'smtp_user', value: process.env.SMTP_USER || '', description: 'SMTP kullanıcı adı / e-posta' },
-      { key: 'smtp_pass', value: process.env.SMTP_PASS || '', description: 'SMTP parolası' },
-      { key: 'smtp_ssl', value: 'false', description: 'SMTP SSL / TLS kullanımı' },
-      { key: 'smtp_auth', value: 'true', description: 'SMTP kimlik doğrulama' },
-      { key: 'smtp_from_name', value: 'SurveyPro Kurumsal', description: 'E-posta gönderici başlığı' },
-      { key: 'smtp_from_email', value: 'noreply@surveypro.com', description: 'E-posta gönderici adresi' },
-      { key: 'sms_api_url', value: process.env.SMS_API_URL || 'http://smsportal.noktabilisim.net:3001', description: 'Nokta Bilişim SMS Gateway API' },
-      { key: 'sms_api_key', value: process.env.SMS_API_KEY || '', description: 'SMS Gateway API Anahtarı' },
-      { key: 'sms_header', value: process.env.SMS_HEADER || 'NOKTABLSM', description: 'SMS Başlık (Originator)' },
-      { key: 'whatsapp_api_url', value: process.env.WHATSAPP_API_URL || 'http://whatsapp.noktabilisim.net:3000/send-message', description: 'Nokta Bilişim WhatsApp API' }
-    ];
-
-    for (const setting of defaultSettings) {
-      await Setting.findOrCreate({
-        where: { key: setting.key },
-        defaults: setting
-      });
-    }
+    // 2. Sistem Ayarları (Logo, Başlık, SMTP, SMS, WhatsApp)
+    await seedDefaultSettings();
 
     // 3. Örnek Aktif Anket (5 Soru Tipi + Puanlama + Kategoriler)
     const survey = await Survey.create({
@@ -351,4 +358,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { seedDatabase };
+module.exports = { seedDatabase, seedDefaultSettings, DEFAULT_SETTINGS };

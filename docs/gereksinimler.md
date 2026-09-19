@@ -2,12 +2,12 @@
 Tarih: 2026-09-19   Durum: ONAYLI
 
 ## 1. Amaç ve İş Değeri
-SurveyPro, kurumların çalışanlarına, paydaşlarına ve müşterilerine yönelik anketleri kolayca tasarlamasını, çoklu dağıtım kanalları (E-posta, SMS, WhatsApp) üzerinden hedef kitleye ulaştırmasını, yanıtları puanlama ve kategori bazlı analiz modelleriyle gerçek zamanlı olarak ölçümlemesini sağlayan kurumsal bir anket yönetim platformudur. Sistem, değerlendirme süreçlerindeki manuel iş yükünü ortadan kaldırarak karar vericilere ayrıntılı raporlar, kategori bazlı başarı analitiği ve Excel çıktıları sunar.
+SurveyPro, kurumların çalışanlarına, paydaşlarına ve müşterilerine yönelik anketleri kolayca tasarlamasını, çoklu dağıtım kanalları (E-posta, SMS, WhatsApp) üzerinden hedef kitleye ulaştırmasını, yanıtları puanlama ve kategori bazlı analiz modelleriyle gerçek zamanlı olarak ölçümlemesini sağlayan kurumsal bir anket yönetim platformudur. Sistem, değerlendirme süreçlerindeki manuel iş yükünü ortadan kaldırarak karar vericilere ayrıntılı raporlar, kategori bazlı başarı analitiği ve Excel çıktıları sunar. Kurumsal kimlik ve logo yönetimi modülü sayesinde işletmeler, giriş ekranından yönetim paneline kadar tüm arayüzleri kendi kurumsal markalarıyla özelleştirebilirler.
 
 ## 2. Kullanıcılar / Roller
 | Rol | Tanım ve Yetki Kapsamı |
 |---|---|
-| **Admin** | Sistem yöneticisi. Tüm anketleri, kullanıcıları, sistem/entegrasyon ayarlarını (SMTP, SMS, WhatsApp), aktivite loglarını yönetir ve tüm raporlara erişir. |
+| **Admin** | Sistem yöneticisi. Tüm anketleri, kullanıcıları, sistem ve entegrasyon ayarlarını (SMTP, SMS, WhatsApp), kurumsal logo/marka yönetimini, aktivite loglarını yönetir ve tüm raporlara erişir. |
 | **Creator** (Anket Yöneticisi) | Anket tasarlayan, soruları ve puanlama/kategori kurallarını oluşturan, anketleri hedef kitleye gönderen ve kendi oluşturduğu anketlerin raporlarını inceleyen kullanıcı. |
 | **Evaluator** (Değerlendirici) | Kendisine atanan veya sistemdeki aktif anketlerin raporlarını, katılımcı puanlarını ve kategori analizlerini inceleyen kullanıcı (anket düzenleyemez). |
 | **Participant** (Katılımcı) | Kendisine özel token linki veya sisteme giriş yaparak anketleri yanıtlayan son kullanıcı. |
@@ -48,13 +48,20 @@ SurveyPro, kurumların çalışanlarına, paydaşlarına ve müşterilerine yön
    - Entegrasyon ayarları paneli (maskelenmiş API key/şifre güvenliği).
    - IP adresi ve aksiyon bazlı aktivite denetim logları (`ActivityLog`).
    - Docker & Nginx Production ortam desteği (`docker-compose.prod.yml`, `deploy.sh`).
+6. **Dinamik Kurumsal Kimlik ve Logo Yönetimi**:
+   - Sistem Ayarları (`/settings`) üzerinden kurumsal müşteri logosu yükleme ve güncelleme (PNG, JPG, JPEG, SVG, WebP formatları, maksimum 2MB dosya boyutu sınırı).
+   - Yüklenen logonun arayüzde anında canlı önizlenmesi ve istenildiğinde tek tıkla varsayılan Truguard logosuna sıfırlanabilmesi ("Varsayılana Dön" aksiyonu).
+   - Giriş sayfasında (`/login`) dinamik logo gösterimi (özel logo tanımlı değilse varsayılan Truguard logosu fallback).
+   - Yönetim paneli sol gezinme menüsünde (`AppLayout` masaüstü sidebar ve mobil header) müşteri logosunun responsive ve kurumsal hiyerarşiye uygun konumlandırılması.
+   - Kimlik doğrulaması gerektirmeyen `/api/settings/public` ucu ile giriş ekranı ve genel arayüzlerin logoyu ve site başlığını güvenli ve yüksek performansla çekebilmesi.
 
 ### Kapsam DIŞI (Açıkça)
 1. **Anket İçi Dinamik Dal/Mantık (Skip Logic / Conditional Branching)**: Belirli bir yanıta göre sonraki soruları gizleme/atlama mantığı bu sürümde yoktur; tüm sorular sıra numarasına göre gösterilir.
 2. **3. Parti OAuth / SSO Entegrasyonu**: Google, Microsoft Azure AD veya LDAP üzerinden kurumsal tek tıkla giriş kapsam dışıdır; yerel JWT e-posta/şifre doğrulaması kullanılır.
 3. **Mobil Uygulama (Native iOS / Android)**: Ayrı bir mobil uygulama geliştirilmeyecektir; sistem mobil uyumlu (responsive web) olarak çalışır.
 4. **Çok Dilli Anket Desteği (i18n Survey Content)**: Aynı anketin tek formda birden fazla dilde çeviri içerikleriyle sunulması bu sürümde yer almamaktadır; arayüz ve içerikler Türkçe odaklıdır.
-5. **Ödeme veya Ücretli Katılım Modülü**: Ücretli anketler, hediye çeki tanımlama veya ödeme ağ geçidi entegrasyonu kapsam dışıdır.
+5. **Kullanıcı/Departman Bazlı Çoklu Logo (Multi-Tenant White-Labeling)**: Farklı departman veya kullanıcılar için ayrı ayrı temalar ve logolar tanımlanması kapsam dışıdır; yüklenen logo sistem geneli için tek kurumsal logodur.
+6. **Tarayıcı İçi Görsel Kırpıcı (Image Cropper / Editor)**: Logo yükleme sırasında görseli döndürme, kırpma veya filtre uygulama araçları kapsam dışıdır; yüklenen görsel CSS oran koruma (`object-contain`) kurallarıyla ölçeklenir.
 
 ## 4. Kullanıcı Hikâyeleri
 
@@ -64,6 +71,7 @@ SurveyPro, kurumların çalışanlarına, paydaşlarına ve müşterilerine yön
 - **US-4 (Anket Yanıtlama ve Sayfalama)**: Bir **Participant** olarak, kendime özel güvenli bağlantı üzerinden kurumsal logolu arayüzde 20'şerli sayfalar halinde soruları kolayca doldurabilmek, eksik bıraktığım soruları anında görebilmek ve tek seferde yanıtlarımı kaydedebilmek istiyorum ki deneyimim kesintisiz ve net olsun.
 - **US-5 (Raporlama ve Puan Sıralaması)**: Bir **Evaluator**, **Creator** veya **Admin** olarak, tamamlanan anketlerin katılım oranlarını, soru bazlı grafiklerini, kategori bazlı başarı yüzdelerini ve katılımcı sıralamasını listeleyebilmek, verileri Excel'e aktarabilmek istiyorum ki değerlendirme sonuçlarını kolayca analiz edip raporlayabileyim.
 - **US-6 (Denetim İzi ve Loglama)**: Bir **Admin** olarak, anket oluşturma, güncelleme, gönderme ve yanıtlama gibi tüm kritik aksiyonları IP adresi ve zaman damgasıyla listeleyebilmek istiyorum ki sistem güvenliğini ve denetlenebilirliğini sağlayabileyim.
+- **US-7 (Kurumsal Kimlik ve Logo Yönetimi)**: Bir **Admin** olarak, sistem ayarlarından kurumsal müşteri logosunu yükleyebilmek, değiştirebilmek ve gerektiğinde varsayılana sıfırlayabilmek istiyorum ki oturum açma sayfasında ve yönetim paneli sol menüsünde / mobil başlığında kurumumuzun kendi marka kimliği yer alsın.
 
 ## 5. Kabul Kriterleri (Ölçülebilir & Test Edilebilir)
 
@@ -97,41 +105,57 @@ SurveyPro, kurumların çalışanlarına, paydaşlarına ve müşterilerine yön
 - **AC-21**: Kişi Puanları sekmesinde katılımcılar toplam puanlarına göre azalan sırada dizilmeli, ilk 3 dereceye madalya simgeleri (🥇, 🥈, 🥉) atanmalıdır.
 - **AC-22**: "Excel'e Aktar" butonuna tıklandığında anket sorularını, katılımcı yanıtlarını ve soru puanlarını içeren `.xlsx` dosyası indirilmeli ve Türkçe karakterler bozulmadan UTF-8 uyumlu açılmalıdır.
 
+### Kurumsal Kimlik ve Logo Yönetimi
+- **AC-23**: Sistem Ayarları (`/settings`) sayfasında Logo Yükleme / Değiştirme alanı bulunmalı; PNG, JPG, JPEG, SVG ve WebP formatları haricindeki dosyalarda veya 2MB'ı aşan dosyalarda istemcide ve sunucuda anında doğrulama hatası (`400 Bad Request`) dönerek işlem engellenmelidir.
+- **AC-24**: Logo yüklendiğinde Sistem Ayarları ekranında anında canlı görsel önizleme sunulmalı; "Varsayılana Dön" (Sıfırla) butonuna basıldığında özel logo kaldırılarak sistem orijinal Truguard logosuna geri dönmeli ve veritabanındaki `custom_logo_url` ayarı temizlenmelidir.
+- **AC-25**: Giriş sayfasında (`/login`) müşteri logosu dinamik olarak en üstte ortalanmış şekilde gösterilmeli; özel logo yüklenmemişse sistem varsayılan Truguard logosunu fallback olarak kesintisiz göstermelidir.
+- **AC-26**: Yönetim panelinde (`AppLayout` bileşeninde), masaüstü sol kenar çubuğunun (Sidebar) en üstünde ve mobil üst başlık barında müşteri logosu kurumsal hiyerarşiye uygun, taşma yapmadan (maksimum yükseklik masaüstünde 48px, mobilde 36px) ve responsive olarak görüntülenmelidir.
+- **AC-27**: Kimlik doğrulaması gerektirmeyen genel ayar API ucu (`GET /api/settings/public`), hassas entegrasyon parametrelerini (şifre, anahtar, e-posta kullanıcıları vb.) filtreleyerek yalnızca güvenli genel alanları (`logo_url`, `app_name`, `site_url`) < 100 ms içinde döndürmelidir.
+
 ## 6. Fonksiyonel Olmayan Gereksinimler
 
 - **Performans**: 
   - Anket doldurma sayfası yüklenme süresi (LCP) < 1.5 saniye olmalıdır.
+  - Genel ayarlar ve logo getirme API ucu (`GET /api/settings/public`) yanıt süresi < 100 ms olmalıdır.
+  - Yüklenen statik logo dosyaları tarayıcı önbelleğinde (`Cache-Control: public, max-age=86400`) tutulmalı ve cache-busting parametresi (`?v=timestamp`) ile yönetilmelidir.
   - 1.000 katılımcılı ve 50 sorulu bir anketin rapor hesaplaması ve Excel çıktısı üretimi < 2.0 saniyede tamamlanmalıdır.
   - Backend API uç noktaları yanıt süresi ortalama < 200 ms olmalıdır.
 - **Güvenlik**:
   - Şifreler bcrypt algoritması ile minimum cost faktörü 12 kullanılarak hash'lenmelidir.
-  - API uç noktaları rate limiter ile brute-force saldırılarına karşı korunmalıdır (dakikada max 100 istek, auth uçlarında max 10 istek).
-  - Ayarlar tablosunda tutulan SMS API anahtarı ve SMTP parolaları istemciye asla açık metin olarak gönderilmemelidir.
+  - Dosya yükleme güvenliği: Yüklenen logo dosyalarında dosya uzantısı ve MIME türü (magic bytes) kontrol edilmeli; SVG dosyalarında zararlı script enjeksiyonuna (XSS) karşı yalnızca güvenli `<img>` render yaklaşımı kullanılmalı veya sunucu tarafında sanitize edilmelidir.
+  - Dosya boyutu sınırı: Maksimum dosya boyutu 2MB olarak sunucu (multer/body-parser) ve istemci katmanında zorunlu tutulmalıdır.
+  - API uç noktaları rate limiter ile brute-force saldırılarına karşı korunmalıdır (dakikada max 100 istek, auth ve public ayar uçlarında max 20 istek).
+  - Ayarlar tablosunda tutulan SMS API anahtarı ve SMTP parolaları istemciye asla açık metin olarak gönderilmemeli, `public` ucundan kesinlikle izole edilmelidir.
 - **Erişilebilirlik ve Arayüz (UI/UX)**:
   - Form alanları, seçenek butonları ve matris hücreleri mobil cihazlarda dokunmatik hedeflere (min 44x44px) uygun olmalıdır.
+  - Kurumsal logo alanlarında erişilebilirlik için anlamlı `alt` etiketleri (`alt="Kurum Logosu"` veya `alt="SurveyPro"`) tanımlanmalıdır.
   - Tüm sayfalarda Yükleniyor (Loading), Boş (Empty), Hata (Error) ve Başarılı (Success) durumları ele alınmış olmalıdır.
-- **Veri Bütünlüğü**:
+- **Veri Bütünlüğü ve Depolama**:
+  - Yüklenen logo dosyaları sunucuda güvenli `/uploads/logos/` dizininde tekil UUID dosya adlarıyla (`logo_<uuid>.<ext>`) saklanmalı; eski logo silindiğinde/güncellendiğinde artık dosya temizliği yapılmalıdır.
   - PostgreSQL veritabanında ilişkisel sorgular ve indeksler (`survey_id`, `user_id`, `token`) optimize edilmiş olmalıdır.
-  - Anket silme işlemlerinde ilişkili kayıtların (`questions`, `responses`, `answers`, `survey_targets`) veri tutarlılığı korunmalıdır.
 - **Operasyon ve Yayınlama**:
-  - Docker Compose ile frontend (Nginx reverse proxy), backend (Node.js) ve veritabanı (PostgreSQL) konteyner ortamında izole çalışmalıdır.
+  - Docker Compose ortamında `/uploads` dizini kalıcı Docker volume (`uploads_data:/app/uploads`) olarak bağlanarak konteyner yeniden başlatmalarında veri kaybı önlenmelidir.
   - Üretim sunucusuna dağıtım `deploy.sh` scripti ile sıfır kesintiye yakın şekilde rsync + docker compose up --build ile gerçekleştirilebilmelidir.
 
 ## 7. Varsayımlar
 1. SMS gönderimleri için Nokta Bilişim SMS Gateway servisinin (`http://smsportal.noktabilisim.net:3001`) aktif ve tanımlı API anahtarına sahip olduğu varsayılmaktadır.
 2. WhatsApp gönderimleri için Nokta Bilişim WhatsApp servisinin (`http://whatsapp.noktabilisim.net:3000`) bağlı oturuma sahip olduğu varsayılmaktadır.
 3. Katılımcıların sisteme geçerli formatta e-posta adresi veya başında 0/90 bulunan geçerli Türkiye telefon numarası ile kayıtlı olduğu varsayılmaktadır.
-4. Anket katılımcılarının standart modern web tarayıcılarını (Chrome, Firefox, Safari, Edge güncel sürümleri) kullandığı varsayılmaktadır.
-5. Anket e-posta ve web arayüzünde Truguard kurumsal logosunun kullanılacağı varsayılmıştır.
+4. Anket katılımcılarının ve sistem yöneticilerinin standart modern web tarayıcılarını (Chrome, Firefox, Safari, Edge güncel sürümleri) kullandığı varsayılmaktadır.
+5. Özel bir logo yüklenmediğinde sistemin varsayılan Truguard logosunu (`frontend/src/assets/Truguard_logo.png`) kullanacağı varsayılmıştır.
+6. Yüklenen logonun tüm sistem genelinde tek bir kurumsal marka kimliği olarak geçerli olacağı ve çok kiracılı (multi-tenant) logo ayrıştırması gerektirmediği varsayılmıştır.
 
 ## 8. Riskler ve Açık Sorular
 
 | No | Risk / Açık Soru | Etki | Olasılık | Sahibi | Azaltma Planı |
 |---|---|---|---|---|---|
-| **R-1** | SMS / WhatsApp Gateway API servislerinin geçici olarak yanıt vermemesi veya zaman aşımı | Yüksek | Orta | DevOps / Backend | İsteklere 15 saniyelik `AbortSignal.timeout` konulmuştur; başarısız gönderimler kullanıcı bazında raporlanır ve loglanır. İleride yeniden deneme (retry) kuyruğu eklenecektir. |
+| **R-1** | SMS / WhatsApp Gateway API servislerinin geçici olarak yanıt vermemesi veya zaman aşımı | Yüksek | Orta | DevOps / Backend | İsteklere 15 saniyelik `AbortSignal.timeout` konulmuştur; başarısız gönderimler kullanıcı bazında raporlanır ve loglanır. |
 | **R-2** | SMTP sunucusunun toplu gönderimlerde IP/gönderim kotasına takılması veya spam filtresine düşmesi | Yüksek | Düşük | Sistem Yöneticisi | Kurumsal SMTP sunucu IP'sinin SPF, DKIM ve DMARC kayıtlarının doğrulanması gerekmektedir. |
 | **R-3** | Çok yüksek soru sayılı (100+ soru) anketlerde istemci tarafında yanıtların kaybolma riski | Orta | Düşük | Frontend Dev | 20'şerli sayfalama ile DOM hafifletilmiştir; ileride her sayfa geçişinde taslak yanıtları yerel hafızaya (`localStorage`) kaydetme özelliği eklenecektir. |
 | **R-4** | Çok büyük anketlerde (10.000+ yanıt) Excel export işleminin bellek tüketimi | Orta | Düşük | DBA / Backend | Şu anki hacimde bellek içi XLSX kütüphanesi yeterlidir; 50.000+ yanıt seviyesine ulaşıldığında streaming Excel (`exceljs` stream) mimarisine geçilecektir. |
+| **R-5** | SVG logo yüklemelerinde XSS (Script Injection) güvenlik açığı riski | Yüksek | Orta | Guvenlik / Backend | Yüklenen SVG dosyaları sunucu tarafında doğrulanacak; istemcide doğrudan DOM'a gömülmeden (inline SVG yerine) izole `<img>` etiketi ile render edilecektir. |
+| **R-6** | Büyük boyutlu veya geçersiz dosya yüklemelerinin disk/bant genişliği tüketmesi | Orta | Düşük | Backend Dev | Sunucu tarafında `multer` dosya boyutu (max 2MB) ve MIME tipi kısıtlaması uygulanacak; geçersiz dosyalar anında reddedilecektir. |
+| **R-7** | Logo güncellendiğinde tarayıcı önbelleği (cache) sebebiyle eski logonun görünmeye devam etmesi | Düşük | Orta | Frontend Dev | Logo URL'si veya frontend state güncellemesinde zaman damgası / hash parametresi (`?v=...`) kullanılarak cache busting sağlanacaktır. |
 
 ## 9. Tasarım Kontrol Listesi Kararları
 
@@ -141,17 +165,19 @@ SurveyPro, kurumların çalışanlarına, paydaşlarına ve müşterilerine yön
 |---|---|---|
 | **1.1 Kimlik Doğrulama** | **Kapsamda** | JWT (Access + Refresh Token) ve bcrypt hash ile e-posta/şifre doğrulaması devrededir. |
 | **1.2 2FA / SSO Entegrasyonu** | **Sonra** | İlk sürüm kurumsal iç kullanım ve token tabanlı anket dağıtımı için yeterlidir; SSO sonraki fazda değerlendirilecektir. |
-| **1.3 Yetkilendirme (RBAC)** | **Kapsamda** | 4 rol (`admin`, `creator`, `evaluator`, `participant`) endpoint seviyesinde `authorize()` middleware ile denetlenmektedir. |
+| **1.3 Yetkilendirme (RBAC)** | **Kapsamda** | 4 rol (`admin`, `creator`, `evaluator`, `participant`) endpoint seviyesinde `authorize()` middleware ile denetlenmektedir. Logo ve sistem ayarlarını yönetme yetkisi yalnızca `admin` rolüne aittir. |
 | **2.1 Veri Modeli Standartları** | **Kapsamda** | `created_at`, `updated_at`, UUID birincil anahtarlar, JSONB seçenek yapıları ve ilişkisel tablolar Sequelize ile tanımlanmıştır. |
 | **2.2 Soft Delete Stratejisi** | **Sonra** | Anket silme işlemleri doğrudan hard delete olarak yapılmakta ve `activity_logs` kaydı tutulmaktadır; arşivleme durumu (`status: 'archived'`) mevcuttur. |
+| **2.4 Dosya / Ek Yönetimi** | **Kapsamda** | Müşteri logosu yükleme için yerel dosya depolama (`/uploads/logos/`), max 2MB boyut sınırı, dosya uzantısı/MIME kontrolü ve tekil dosya adlandırma uygulanacaktır. |
 | **3.1 API Standartları & Hata Formatı** | **Kapsamda** | Tüm yanıtlar standart `{ success: true, data: ... }` veya `{ success: false, message: ... }` formatında dönmektedir. |
-| **3.2 Rate Limiting** | **Kapsamda** | Express rate limiter genel ve auth rotalarına uygulanmıştır. |
-| **4.1 Girdi Doğrulama & XSS** | **Kapsamda** | API seviyesinde parametre kontrolleri, React JSX çıktı kodlaması ve CORS middleware aktiftir. |
-| **4.2 Gizli Bilgi Yönetimi** | **Kapsamda** | `.env` repo dışında tutulmakta, API'den dönen ayarlarda şifreler `••••••••` ile maskelenmektedir. |
-| **5.1 5 UI Durumu (UX)** | **Kapsamda** | Yükleniyor, Hata, Boş durum, Tamamlandı ekranları ve Form validasyon mesajları tüm sayfalarda mevcuttur. |
+| **3.2 Rate Limiting** | **Kapsamda** | Express rate limiter genel, auth ve public settings rotalarına uygulanmıştır. |
+| **3.3 Public Settings Endpoint** | **Kapsamda** | `/api/settings/public` ucu yetkilendirme gerektirmeden yalnızca logo URL'si ve site başlığını maskesiz/güvenli dönecektir. |
+| **4.1 Girdi Doğrulama & XSS** | **Kapsamda** | API seviyesinde dosya tipi ve boyutu doğrulama, SVG dosyalarında XSS izolasyonu (`<img>` render) ve React JSX çıktı kodlaması devrededir. |
+| **4.2 Gizli Bilgi Yönetimi** | **Kapsamda** | `.env` repo dışında tutulmakta, API'den dönen ayarlarda şifreler `••••••••` ile maskelenmekte; public uçtan hassas veriler kesinlikle döndürülmemektedir. |
+| **5.1 5 UI Durumu (UX)** | **Kapsamda** | Logo yükleme alanında Yükleniyor (Uploading), Başarılı (Preview), Boş (Default Fallback), Hata (Invalid file/size) ve Sıfırlama durumları ele alınmıştır. |
 | **5.2 Soru Sıralama & Sayfalama** | **Kapsamda** | Editörde Drag & Drop sıralama, anket doldurmada 20'şerli sayfalama ve matris kontrolleri uygulanmıştır. |
-| **5.3 Responsive & Kurumsal Tasarım** | **Kapsamda** | Tailwind CSS ile mobil uyumluluk, Truguard logo yerleşimi ve bildirim toast'ları tamamlanmıştır. |
-| **6.1 Performans & İndeksler** | **Kapsamda** | Token, survey_id ve user_id alanlarında PostgreSQL indeksleri mevcuttur. |
-| **7.1 Denetim İzi & Loglama** | **Kapsamda** | `ActivityLog` modeliyle tüm kritik aksiyonlar (giriş, anket oluşturma, gönderme, yanıtlama) IP ile kaydedilmektedir. |
-| **7.2 Docker & Dağıtım Scripti** | **Kapsamda** | `docker-compose.prod.yml`, `nginx.prod.conf` ve `deploy.sh` ile publish sunucusuna tek komutla aktarım sağlanmaktadır. |
+| **5.3 Responsive & Kurumsal Tasarım** | **Kapsamda** | Masaüstü Sidebar (`AppLayout`), mobil üst bar ve Giriş sayfasında (`LoginPage`) duyarlı logo konumlandırması ve boyut koruma (`object-contain`) kuralları tanımlanmıştır. |
+| **6.1 Performans & İndeksler** | **Kapsamda** | Token, survey_id ve user_id indeksleri mevcut; public logo/settings uçlarında hızlı yanıt ve statik dosya önbellekleme uygulanmıştır. |
+| **7.1 Denetim İzi & Loglama** | **Kapsamda** | `ActivityLog` modeliyle logo yükleme/sıfırlama ve ayar değişiklikleri admin kullanıcı ve IP bilgisiyle loglanmaktadır. |
+| **7.2 Docker & Dağıtım Scripti** | **Kapsamda** | `/uploads` klasörü kalıcı volume olarak tanımlanarak Docker ve `deploy.sh` ortamlarında veri kalıcılığı güvenceye alınmıştır. |
 | **8.1 KVKK & Anonimlik** | **Kapsamda** | Anonim anketlerde katılımcı `user_id` saklanmayıp SHA-256 hash ile saklanmakta, kimlik gizliliği korunmaktadır. |

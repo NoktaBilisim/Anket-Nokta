@@ -183,3 +183,23 @@ CREATE INDEX IF NOT EXISTS idx_activity_logs_action_created ON activity_logs(act
 
 -- 4.8 Settings İndeksleri
 CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+
+-- 5. Başlangıç Sistem ve Marka Ayarları (İdempotent Seed)
+INSERT INTO settings (id, key, value, description, created_at, updated_at)
+VALUES
+  (gen_random_uuid(), 'app_logo', '', 'Özel kurumsal logo dosya yolu', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'app_title', 'SurveyPro', 'Uygulama ve sistem başlığı', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'site_url', 'http://localhost:3000', 'Uygulama genel web adresi', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_host', 'smtp.gmail.com', 'SMTP sunucu adresi', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_port', '587', 'SMTP port numarası', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_user', '', 'SMTP kullanıcı adı / e-posta', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_pass', '', 'SMTP parolası', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_ssl', 'false', 'SMTP SSL / TLS kullanımı', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_auth', 'true', 'SMTP kimlik doğrulama', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_from_name', 'SurveyPro Kurumsal', 'E-posta gönderici başlığı', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'smtp_from_email', 'noreply@surveypro.com', 'E-posta gönderici adresi', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'sms_api_url', 'http://smsportal.noktabilisim.net:3001', 'Nokta Bilişim SMS Gateway API', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'sms_api_key', '', 'SMS Gateway API Anahtarı', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'sms_header', 'NOKTABLSM', 'SMS Başlık (Originator)', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  (gen_random_uuid(), 'whatsapp_api_url', 'http://whatsapp.noktabilisim.net:3000/send-message', 'Nokta Bilişim WhatsApp API', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (key) DO NOTHING;

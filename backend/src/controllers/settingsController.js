@@ -1,10 +1,28 @@
-const { getAllSettings, saveSettings } = require('../services/settingsService');
+const {
+  getAllSettings,
+  getSetting,
+  getPublicSettings,
+  saveSettings,
+  removeLogoFile,
+  deleteLogo: deleteLogoService
+} = require('../services/settingsService');
 const { testSmtp, sendTestEmail, testWhatsApp, testSms } = require('../services/notificationService');
+const { ActivityLog } = require('../models');
 const { success, error } = require('../utils/response');
 const { isValidEmail } = require('../utils/validate');
 const logger = require('../utils/logger');
 
 const SENSITIVE = ['smtp_pass', 'sms_api_key'];
+
+exports.getPublic = async (req, res) => {
+  try {
+    const publicSettings = await getPublicSettings();
+    return success(res, publicSettings);
+  } catch (err) {
+    logger.error('Settings getPublic error:', err);
+    return error(res, 'Genel ayarlar yüklenirken bir hata oluştu', 500);
+  }
+};
 
 exports.get = async (req, res) => {
   try {
@@ -24,6 +42,8 @@ exports.get = async (req, res) => {
 exports.save = async (req, res) => {
   try {
     const allowed = [
+      'app_title',
+      'app_logo',
       'site_url',
       'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
       'smtp_ssl', 'smtp_auth', 'smtp_from_name', 'smtp_from_email',
@@ -38,10 +58,80 @@ exports.save = async (req, res) => {
       }
     }
     await saveSettings(pairs);
+
+    if (req.user) {
+      await ActivityLog.create({
+        user_id: req.user.id,
+        action: 'setting_updated',
+        metadata: { updated_keys: Object.keys(pairs) },
+        ip_address: req.ip
+      }).catch(logErr => logger.warn(`ActivityLog hatası: ${logErr.message}`));
+    }
+
     return success(res, { message: 'Ayarlar kaydedildi' });
   } catch (err) {
     logger.error('Settings save error:', err);
     return error(res, 'Ayarlar kaydedilirken bir hata oluştu');
+  }
+};
+
+exports.uploadLogo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return error(res, 'Lütfen bir logo dosyası seçin.', 400);
+    }
+
+    const currentLogo = await getSetting('app_logo');
+    if (currentLogo) {
+      await removeLogoFile(currentLogo);
+    }
+
+    const relativePath = `/uploads/logos/${req.file.filename}`;
+    await saveSettings({ app_logo: relativePath });
+
+    const appTitle = (await getSetting('app_title')) || 'SurveyPro';
+
+    if (req.user) {
+      await ActivityLog.create({
+        user_id: req.user.id,
+        action: 'setting_updated',
+        metadata: { field: 'app_logo', filename: req.file.filename, app_title: appTitle },
+        ip_address: req.ip
+      }).catch(logErr => logger.warn(`ActivityLog hatası: ${logErr.message}`));
+    }
+
+    return success(res, {
+      app_logo: relativePath,
+      app_title: appTitle,
+      message: 'Logo başarıyla yüklendi ve güncellendi'
+    });
+  } catch (err) {
+    logger.error('Settings uploadLogo error:', err);
+    return error(res, 'Logo kaydedilirken bir hata oluştu', 500);
+  }
+};
+
+exports.deleteLogo = async (req, res) => {
+  try {
+    const currentLogo = await getSetting('app_logo');
+    await deleteLogoService();
+
+    if (req.user) {
+      await ActivityLog.create({
+        user_id: req.user.id,
+        action: 'setting_updated',
+        metadata: { action: 'logo_reset_to_default', previous_logo: currentLogo },
+        ip_address: req.ip
+      }).catch(logErr => logger.warn(`ActivityLog hatası: ${logErr.message}`));
+    }
+
+    return success(res, {
+      app_logo: null,
+      message: 'Özel logo kaldırıldı, sistem varsayılan Truguard logosuna sıfırlandı'
+    });
+  } catch (err) {
+    logger.error('Settings deleteLogo error:', err);
+    return error(res, 'Logo sıfırlanırken bir hata oluştu', 500);
   }
 };
 

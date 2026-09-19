@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getSurveyByToken, submitSurvey } from '../utils/api'
+import { useBrandingStore } from '../store/brandingStore'
 import truguardLogo from '../assets/Truguard_logo.png'
 import { AlertCircle, RefreshCw, CheckCircle2, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react'
 
@@ -8,6 +9,7 @@ const PAGE_SIZE = 20
 
 export default function TakeSurveyPage() {
   const { token } = useParams()
+  const { appLogo, appTitle, cacheKey } = useBrandingStore()
   const [data,       setData]       = useState(null)
   const [answers,    setAnswers]     = useState({})
   const [loading,    setLoading]     = useState(true)
@@ -86,8 +88,16 @@ export default function TakeSurveyPage() {
 
   // ── Logo bileşeni ────────────────────────────────────────────────────────────
   const Logo = () => (
-    <div className="flex justify-center mb-5">
-      <img src={truguardLogo} alt="Truguard" className="h-12 w-auto object-contain" />
+    <div className="flex justify-center mb-5 min-h-[48px] items-center">
+      <img
+        src={appLogo ? `${appLogo}?v=${cacheKey}` : truguardLogo}
+        alt={appTitle || 'SurveyPro'}
+        className="h-12 w-auto max-w-[200px] object-contain drop-shadow-xs"
+        onError={(e) => {
+          e.currentTarget.onerror = null
+          e.currentTarget.src = truguardLogo
+        }}
+      />
     </div>
   )
 

@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import { useBrandingStore } from './store/brandingStore'
 import AppLayout from './components/layout/AppLayout'
 import Notifications from './components/shared/Notifications'
 import LoginPage from './pages/LoginPage'
@@ -21,6 +23,12 @@ function Protected({ children }) {
 }
 
 export default function App() {
+  const fetchBranding = useBrandingStore((state) => state.fetchBranding)
+
+  useEffect(() => {
+    fetchBranding()
+  }, [fetchBranding])
+
   return (
     <BrowserRouter>
       <Notifications />

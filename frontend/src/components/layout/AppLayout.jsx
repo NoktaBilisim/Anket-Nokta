@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { useBrandingStore } from '../../store/brandingStore'
 import { useThemeStore } from '../../store/themeStore'
+import truguardLogo from '../../assets/Truguard_logo.png'
 import {
   LayoutDashboard, ClipboardList, Users, Activity,
   User, LogOut, PlusCircle, ListChecks, Settings, Sun, Moon,
@@ -10,6 +12,7 @@ import {
 
 export default function AppLayout() {
   const { user, logout } = useAuthStore()
+  const { appLogo, appTitle, cacheKey } = useBrandingStore()
   const { theme, toggle } = useThemeStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -19,6 +22,8 @@ export default function AppLayout() {
     await logout()
     navigate('/login')
   }
+
+  const logoSrc = appLogo ? `${appLogo}?v=${cacheKey}` : truguardLogo
 
   const navItems = [
     { to: '/dashboard',       icon: LayoutDashboard, label: 'Dashboard',       roles: ['admin','creator','evaluator','participant'] },
@@ -34,32 +39,43 @@ export default function AppLayout() {
   return (
     <div className="flex h-screen bg-gray-50 flex-col md:flex-row overflow-hidden">
       {/* ── Mobil Üst Bar ───────────────────────────────────────── */}
-      <header className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between z-30">
-        <div className="flex items-center gap-3">
+      <header className="md:hidden bg-white border-b border-gray-200 px-4 py-2.5 flex items-center justify-between z-30 shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label={mobileMenuOpen ? 'Menüyü Kapat' : 'Menüyü Aç'}
             aria-expanded={mobileMenuOpen}
-            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
           >
             {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-indigo-600">SurveyPro</h1>
-            <p className="text-[10px] text-gray-500 capitalize">{user?.role}</p>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src={logoSrc}
+              alt={appTitle || 'SurveyPro'}
+              className="h-8 max-h-9 w-auto max-w-[110px] object-contain shrink-0 drop-shadow-xs"
+              onError={(e) => {
+                e.currentTarget.onerror = null
+                e.currentTarget.src = truguardLogo
+              }}
+            />
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-gray-900 truncate leading-none">{appTitle || 'SurveyPro'}</h1>
+              <p className="text-[10px] text-gray-500 capitalize mt-0.5">{user?.role}</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={toggle}
             aria-label={theme === 'dark' ? 'Aydınlık moda geç' : 'Karanlık moda geç'}
             title={theme === 'dark' ? 'Aydınlık moda geç' : 'Karanlık moda geç'}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
           >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold text-xs">
             {user?.name?.[0]?.toUpperCase()}
@@ -82,10 +98,21 @@ export default function AppLayout() {
         }`}
       >
         {/* Masaüstü Logo */}
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-indigo-600">SurveyPro</h1>
-            <p className="text-xs text-gray-500 mt-1 capitalize">{user?.role}</p>
+        <div className="p-5 border-b border-gray-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <img
+              src={logoSrc}
+              alt={appTitle || 'SurveyPro'}
+              className="h-10 max-h-12 w-auto max-w-[130px] object-contain shrink-0 drop-shadow-xs"
+              onError={(e) => {
+                e.currentTarget.onerror = null
+                e.currentTarget.src = truguardLogo
+              }}
+            />
+            <div className="min-w-0">
+              <h1 className="text-base font-bold text-gray-900 truncate leading-tight">{appTitle || 'SurveyPro'}</h1>
+              <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+            </div>
           </div>
           {/* Dark mode hızlı toggle */}
           <button
@@ -93,7 +120,7 @@ export default function AppLayout() {
             onClick={toggle}
             aria-label={theme === 'dark' ? 'Aydınlık moda geç' : 'Karanlık moda geç'}
             title={theme === 'dark' ? 'Aydınlık moda geç' : 'Karanlık moda geç'}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
           >
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>

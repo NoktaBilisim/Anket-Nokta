@@ -63,9 +63,17 @@ export const getLogs = (params) => api.get('/logs', { params })
 export const getStats = () => api.get('/logs/stats')
 export const getMySurveys = () => api.get('/logs/my-surveys')
 
-// Settings
+// Settings & Branding
+export const getPublicSettings = () => api.get('/settings/public')
 export const getSettings = () => api.get('/settings')
 export const saveSettings = (data) => api.put('/settings', data)
+export const uploadLogo = (formData) => api.post('/settings/logo', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+})
+export const deleteLogo = () => api.delete('/settings/logo')
 export const testSmtp = () => api.post('/settings/test-smtp')
+export const sendTestEmail = (data) => api.post('/settings/send-test-email', data)
+export const sendTestWhatsApp = (data) => api.post('/settings/send-test-whatsapp', data)
+export const sendTestSms = (data) => api.post('/settings/send-test-sms', data)
 
 export default api
